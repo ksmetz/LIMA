@@ -3,6 +3,71 @@
 #     from the RNAcluster pipeline on killdevil.     #
 ######################################################
 
+
+#===========================================================================================================#
+#                                                Initialize                                                 #
+#===========================================================================================================#
+
+
+#------------------------------------------------ Settings ---------------------------------------------------#
+
+################
+# RUN SETTINGS #
+################
+# Determine which parts of the code to run
+makePDF = T
+readRaw = T
+txiPlot = T
+transformType = "var"
+PCAint = F
+PCAplot = T
+countPlot = T
+
+
+
+##################
+# COLOR SETTINGS #
+##################
+# Assign sample colors for PCA, plot counts
+sample.pal=parula(8)
+
+# Assign GO term colors
+BPcol <- "dodgerblue2"
+CCcol <- "firebrick2"
+MFcol <- "grey"
+
+
+#################
+# PLOT SETTINGS #
+#################
+par(mar=c(1,1,1,1))
+par(mfrow=c(1,1))
+
+
+#####################
+# VARIABLE SETTINGS #
+#####################
+# Assign project variables
+proj = 'LIMA'
+projNum = '2-3.1.1'
+sort = 'trmt'
+
+# Assign output directory for PDFs, CSVs, etc.
+outputName = paste(proj, projNum, Sys.Date(), sep="_")
+outputDir = file.path("/Users/phanstiel3/Desktop", outputName)
+#outputDir = file.path("/Users/phanstiel3/Research/Data/Projects", proj, "rna/diff")
+
+# Make output directory (in case it's necessary)
+dirCmd = paste("mkdir", outputDir, sep=" ")
+system(dirCmd)
+
+# Assign GO marts
+mart <- useMart("ENSEMBL_MART_ENSEMBL", dataset = "hsapiens_gene_ensembl", host= "www.ensembl.org")
+
+
+##################
+# LOAD LIBRARIES #
+##################
 # Load any required libraries
 library(limma)
 library(biomaRt)
@@ -23,19 +88,27 @@ library(pals)
 
 #------------------------------------------------ Functions ------------------------------------------------#
 
+# General function for rounding a number to a base
+mround <- function(x,base)
+{ 
+  base*round(x/base) 
+}
+
+
 # Function for shortening the decimal ENSEMBL name from dds, res, etc. to the standard ENSEMBL gene ID
-nameAbridge <- function(longName){
+nameAbridge <- function(longName)
+{
   split <- strsplit(longName, "[.]")
   shortName <- unlist(split)[2*(1:length(longName))-1]
 }
 
 
 # Function for extending the ENSEMBL name to the decimal version in dds, res, etc.
-nameExtend <- function(results, shortName, abridgedKey = abridgedKey)
+nameExtend <- function(shortName, longKey = longGeneKey, abridgedKey = abridgedGeneKey)
 {
   longNames=list()
   for (name in shortName){
-    longName = rownames(results[which(abridgedKey==name),])
+    longName = longKey[which(abridgedKey==name)]
     longNames = append(longNames, longName)
   }
   return(longNames)
@@ -209,50 +282,175 @@ geneWrite <- function(res, geneList, symbolList, count1_1, count1_2, count2_1, c
 
 
 
-#------------------------------------------------ Initialize ------------------------------------------------#
+#===========================================================================================================#
+#                                                   Run                                                     #
+#===========================================================================================================#
 
-#####################
-# VARIABLE SETTINGS #
-#####################
-# Assign project variables
-proj = 'LIMA'
-projNum = '2-3.1.1'
-sort = 'trmt'
-outputDir = file.path("/Users/phanstiel3/Research/Data/Projects", proj, "rna/diff")
-
-# Assign GO marts
-mart <- useMart("ENSEMBL_MART_ENSEMBL", dataset = "hsapiens_gene_ensembl", host= "www.ensembl.org")
-
-
-################
-# RUN SETTINGS #
-################
-
-
-##################
-# COLOR SETTINGS #
-##################
-# Assign GO term colors
-BPcol <- "dodgerblue2"
-CCcol <- "firebrick2"
-MFcol <- "grey"
-
-
+#----------------------------------------------- Read in ---------------------------------------------------#
 
 ################
 # READ IN DATA #
 ################
-# Read in config file
-configPath <- paste0('/Users/phanstiel3/Research/Data/Projects/', proj, '/rna/proc/tximport/', proj, '_', projNum, '_samples.csv')
-config <- read.csv(configPath, header=T)
+# Read in the txi file, as defined in the config file -----------------------------------------------------------> *** READRAW ***
+if(readRaw == T){
+  # Read in config file
+  configPath <- paste0('/Users/phanstiel3/Research/Data/Projects/', proj, '/rna/proc/tximport/', proj, '_', projNum, '_samples.csv')
+  config <- read.csv(configPath, header=T)
+  
+  # Read in count matrix
+  txiPath <- paste0('/Users/phanstiel3/Research/Data/Projects/', proj, '/rna/proc/tximport/', proj, '_', projNum, '_txi.rds')
+  txi <- readRDS(txiPath)
+}
 
-# Read in count matrix
-txiPath <- paste0('/Users/phanstiel3/Research/Data/Projects/', proj, '/rna/proc/tximport/', proj, '_', projNum, '_txi.rds')
-txi <- readRDS(txiPath)
+
+# Plot read info based on the txi file --------------------------------------------------------------------------> *** TXIPLOT ***
+if(txiPlot == T){
+  
+  if(makePDF == T){
+    pdf(file=file.path(outputDir, "readInfo.pdf"), width=8, height=8)
+  }
+  
+  # Plot count info
+  par(mfrow=c(2,2))
+  
+  txi.x.labels = substr(colnames(txi$counts), 16, 25)
+  
+  # Count boxplots for each sample (gene avg)
+  boxplot(txi$counts,outline=F,xaxt='n', main="Counts")
+  axis(side=1,las=2,at=1:16,labels=txi.x.labels)
+  
+  # Total summed counts for each sample
+  bp = barplot(colSums(txi$counts),xaxt='n', main="Summed counts per sample")
+  axis(side=1,las=2,at=bp,labels=txi.x.labels)
+  
+  # Histogram of total counts per gene
+  hist(rowSums(txi$counts), main="Summed counts per gene")
+  rug(rowSums(txi$counts))
+  
+  # Histogram of total counts per gene for a single sample
+  hist(txi$counts[,3], main="Counts per gene for 60m")
+  rug(txi$counts[,3])
+  
+  if(makePDF == T){
+    dev.off()
+  }
+  
+}
+
+
+
+#############
+# RUN DESEQ #
+#############
+# Create data frame with sample names and whatever condition you want to distinguish them by (config$Condition, config$Cell.Type, etc.)
+colData <- data.frame(condition = factor(config$Condition), rep = factor(config$BioRep), row.names = config$Name)
+
+
+# Create DESeq Data Set from txImport 
+ddsTxI <- DESeqDataSetFromTximport(txi, colData=colData, design =~ rep + condition)
+
+dds <- DESeq(ddsTxI)
+
+
+# Transform the dds (rlog, vst or ntd) --------------------------------------------------------------------> *** TRANSFORMTYPE ***
+if(transformType == "norm"){
+  dds.trans <- normTransform(dds)
+}
+
+if(transformType == "rlog"){
+  dds.trans <- rlog(dds, blind=FALSE)
+}
+
+if(transformType == "var"){
+  dds.trans <- vst(dds)
+}
+
+
+
+##############
+# OTHER DATA #
+##############
+# Make long + abridged gene list from dds 
+longGeneKey <- rownames(assay(dds))
+abridgedGeneKey <- nameAbridge(longKey)
+
+
+# Read in excel of genes of interest (gene name and ENSG ID)
+GoI <- read.csv("~/Research/Documents/Projects/LIMA/RNAseq/AP1.csv", header=F)
+colnames(GoI) <- c("gene", "ID")
+
+# Add long ID based on dds
+for (n in 1:nrow(GoI))
+  {
+  GoI$long.ID[n] = nameExtend(GoI$ID[n])[[1]]
+}
 
 
 
 
-# Make long + abridged gene list from results file
-longKey <- rownames(results)
-abridgedKey <- nameAbridge(longKey)
+#------------------------------------------------ Analyze ----------------------------------------------------#
+
+#################
+# GLOBAL TRENDS #
+#################
+
+#-------------------#
+# INTERACTIVE PLOTS #
+#-------------------#
+# PCA explorer (featuring pca2go, which requires the names be shortened to regular ENSEMBL IDs) ------------------> *** PCAINT ***
+if(PCAint == T){
+  dds.rename = dds
+  rownames(dds.rename) <- nameAbridge(rownames(dds.rename))
+  pcaExplorer(dds=dds.rename)
+}
+
+
+#----------#
+# PCA PLOT #
+#----------#
+# Plot PCA of transformed counts --------------------------------------------------------------------------------> *** PCAPLOT ***
+if(PCAplot == T){
+  if(makePDF == T){
+    pdf(file=file.path(outputDir, "PCAplot.pdf"), width=8, height=8)
+  }
+  
+  # Plot PCA of transformed counts
+  par(mfrow=c(1,1))
+  plotPCA(dds.trans, intgroup="condition")+labs(title="Transformed Counts PCA")+scale_color_manual(values=sample.pal)
+  
+  if(makePDF == T){
+    dev.off()
+  }
+}
+
+
+#-------------#
+# PLOT COUNTS #
+#-------------#
+# Plot counts of genes of interest ----------------------------------------------------------------------------> *** COUNTPLOT ***
+if(countPlot == T){
+  if(makePDF == T){
+    pdf(file=file.path(outputDir, "countPlot.pdf"), width=8, height=8)
+  }
+  
+  # Plot settings
+  n=nrow(GoI)
+  par(mar=c(3,2,1,2))
+  par(mfrow=c(3,mround(n,3)/3))
+  
+  # Go through genes of interest (GoI) and plot the counts of each gene listed
+  for(n in 1:nrow(GoI)){
+    plotCounts(dds, GoI$long.ID[n], main=GoI$gene[n], pch=16, col=rep(sample.pal,times=2),
+              intgroup="condition")
+  }
+  
+  if(makePDF == T){
+    dev.off()
+  }
+}
+
+
+
+
+
+
