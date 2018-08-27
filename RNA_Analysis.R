@@ -14,14 +14,24 @@
 ################
 # RUN SETTINGS #
 ################
-# Determine which parts of the code to run
+# Make PDFs or run in Rstudio only?
 makePDF = T
+
+# Read in from raw data?
 readRaw = T
+
+# Recreate dds and results files?
+runDESeq = F
+runShrink = F
+
+# Make which plots/files?
 txiPlot = T
-transformType = "var"
 PCAint = F
 PCAplot = T
 countPlot = T
+MAplot = T
+GOplot = T
+
 
 
 
@@ -51,6 +61,12 @@ par(mfrow=c(1,1))
 proj = 'LIMA'
 projNum = '2-3.1.1'
 sort = 'trmt'
+
+transformType = "var"
+
+# Assign cutoffs
+p.thr = .01
+lfc.thr = 1
 
 # Assign output directory for PDFs, CSVs, etc.
 outputName = paste(proj, projNum, Sys.Date(), sep="_")
@@ -88,10 +104,22 @@ library(pals)
 
 #------------------------------------------------ Functions ------------------------------------------------#
 
-# General function for rounding a number to a base
-mround <- function(x,base)
+# General function for rounding a number to a variable base
+mround <- function(x,base, mode="std")
 { 
-  base*round(x/base) 
+  if(mode == "std"){
+    out = base*round(x/base) 
+  }
+  
+  if(mode == "floor"){
+    out = base*floor(x/base) 
+  }
+  
+  if(mode == "ceiling"){
+    out = base*ceiling(x/base) 
+  }
+  
+  return(out)
 }
 
 
@@ -116,7 +144,7 @@ nameExtend <- function(shortName, longKey = longGeneKey, abridgedKey = abridgedG
 
 
 # Function for circling (and optionally labeling) a list of genes on an MA plot
-geneGroupPlot <- function(results, geneName, geneID, abridgedKey = abridgedKey)
+geneGroupPlot <- function(results, geneName, geneID, abridgedKey = abridgedGeneKey)
 {
   if (length(geneName) != length(geneID))
   {
@@ -133,21 +161,37 @@ geneGroupPlot <- function(results, geneName, geneID, abridgedKey = abridgedKey)
 }
 
 
-# Functions for spliting DESeq2 results into sig up/downreg genes
-MAsplitter <- function(results, dir)
+# Function for plotting all MA-plots
+MAplotter <- function(results, col1="dodgerblue2", col2="firebrick2", title1="Neg", title2="Pos", geneNameIDList=NULL, pval = .1)
 {
-  resSig <- results[which(results$padj <= .1),]
+  resSig <- results[which(results$padj <= pval),]
   resPos <- resSig[which(resSig$log2FoldChange > 0),]
   resNeg <- resSig[which(resSig$log2FoldChange < 0),]
   
-  if(dir = "pos"){
-    return(resPos)
+  min.LFC = mround(min(results[,2][!is.na(results[,2])]), 5, "floor")
+  max.LFC = mround(max(results[,2][!is.na(results[,2])]),5, "ceiling")
+  
+  max.counts = mround(max(results[,2][!is.na(results[,2])]), 1000000, "ceiling")
+  
+  plot(results[,1], results[,2], log="x", xlim=c(.15, max.counts), ylim=c(min.LFC, max.LFC), cex=.25, col="gray38", pch=19, xlab="", ylab="")
+  points(resNeg[,1], resNeg[,2], pch=19, cex=.25, col=col1)
+  points(resPos[,1], resPos[,2], pch=19, cex=.25, col=col2)
+  lines(c(.15, max.counts), c(0,0), col=alpha("indianred1", .5), lwd=3)
+  
+  main.title = paste("MA-Plot:", title1, "vs", title2, sep=" ")
+  title(main=main.title)
+  title(xlab="mean of normalized counts", line=2)
+  title(ylab="log2 fold change", line=2.5)
+  
+  if(!is.null(geneNameIDList)){
+    geneNames <- geneNameIDList[,1]
+    geneIDs <- geneNameIDList[,2]
+    geneGroupPlot(results, geneNames, geneIDs)
   }
   
-  if(dir = "neg"){
-    return(resNeg)
-  }
-}
+  legtxt = c(paste0(title1," (n=",nrow(resPos), ")"), paste0(title2," (n=",nrow(resNeg), ")"))
+  legend("topright", legend=legtxt, pch=19, col=c(col1, col2), cex=.8)
+}  
 
 
 # limma-based GO enrich function
@@ -342,27 +386,40 @@ if(txiPlot == T){
 #############
 # RUN DESEQ #
 #############
-# Create data frame with sample names and whatever condition you want to distinguish them by (config$Condition, config$Cell.Type, etc.)
-colData <- data.frame(condition = factor(config$Condition), rep = factor(config$BioRep), row.names = config$Name)
+# Create dds and transformed dds  ------------------------------------------------------------------------------> *** RUNDESEQ ***
+if(runDESeq == T){
+  # Create data frame with sample names and whatever condition you want to distinguish them by (config$Condition, config$Cell.Type, etc.)
+  colData <- data.frame(condition = factor(config$Condition), rep = factor(config$BioRep), row.names = config$Name)
+  
+  
+  # Create DESeq Data Set from txImport, using LRT for p-values
+  ddsTxI <- DESeqDataSetFromTximport(txi, colData=colData, design =~ rep + condition)
+  
+  dds <- DESeq(ddsTxI, test="LRT", full=~rep + condition, reduced = ~rep)
+  
+  # Transform the dds (rlog, vst or ntd) --------------------------------------------------------------------> *** TRANSFORMTYPE ***
+  if(transformType == "norm"){
+    dds.trans <- normTransform(dds)
+  }
+  
+  if(transformType == "rlog"){
+    dds.trans <- rlog(dds, blind=FALSE)
+  }
+  
+  if(transformType == "var"){
+    dds.trans <- vst(dds)
+  }
+}  
 
-
-# Create DESeq Data Set from txImport 
-ddsTxI <- DESeqDataSetFromTximport(txi, colData=colData, design =~ rep + condition)
-
-dds <- DESeq(ddsTxI)
-
-
-# Transform the dds (rlog, vst or ntd) --------------------------------------------------------------------> *** TRANSFORMTYPE ***
-if(transformType == "norm"){
-  dds.trans <- normTransform(dds)
-}
-
-if(transformType == "rlog"){
-  dds.trans <- rlog(dds, blind=FALSE)
-}
-
-if(transformType == "var"){
-  dds.trans <- vst(dds)
+# Find shrunken LFC for each comparison vs 0 ------------------------------------------------------------------> *** RUNSHRINK ***
+if(runShrink == T){
+  res.030 <- lfcShrink(dds, coef="condition_30_vs_0", type="apeglm")
+  res.060 <- lfcShrink(dds, coef="condition_60_vs_0", type="apeglm")
+  res.090 <- lfcShrink(dds, coef="condition_90_vs_0", type="apeglm")
+  res.0120 <- lfcShrink(dds, coef="condition_120_vs_0", type="apeglm")
+  res.0240 <- lfcShrink(dds, coef="condition_240_vs_0", type="apeglm")
+  res.0360 <- lfcShrink(dds, coef="condition_360_vs_0", type="apeglm")
+  res.01440 <- lfcShrink(dds, coef="condition_1440_vs_0", type="apeglm")
 }
 
 
@@ -438,7 +495,7 @@ if(countPlot == T){
   par(mar=c(3,2,1,2))
   par(mfrow=c(3,mround(n,3)/3))
   
-  # Go through genes of interest (GoI) and plot the counts of each gene listed
+  # Go through genes of interest (GoI) and plot the counts of each gene listed (note: plotCounts output is the same as if you manually plotted the vst dds assay values)
   for(n in 1:nrow(GoI)){
     plotCounts(dds, GoI$long.ID[n], main=GoI$gene[n], pch=16, col=rep(sample.pal,times=2),
               intgroup="condition")
@@ -451,6 +508,95 @@ if(countPlot == T){
 
 
 
+#####################
+# 1 v 1 COMPARISONS #
+#####################
+
+#----------#
+# MA PLOTS #
+#----------#
+# Make MA Plots for each comparison vs 0 -------------------------------------------------------------------------> *** MAPLOT ***
+if(MAplot == T){
+  if(makePDF == T){
+    pdf(file=file.path(outputDir, "countPlot.pdf"), width=12, height=6)
+  }
+  
+  # Plot settings
+  par(mar=c(3,2,1,2))
+  par(mfrow=c(2,4))
+  
+  # Plot each with shrunken LFC, LRT p-val
+  MAplotter(res.030, col1=sample.pal[1], col2=sample.pal[2],title1="0000", title2="0030", geneNameIDList = ap1)
+  MAplotter(res.060, col1=sample.pal[1], col2=sample.pal[3],title1="0000", title2="0060", geneNameIDList = ap1)
+  MAplotter(res.090, col1=sample.pal[1], col2=sample.pal[4],title1="0000", title2="0090", geneNameIDList = ap1)
+  MAplotter(res.0120, col1=sample.pal[1], col2=sample.pal[5],title1="0000", title2="0120", geneNameIDList = ap1)
+  MAplotter(res.0240, col1=sample.pal[1], col2=sample.pal[6],title1="0000", title2="0240", geneNameIDList = ap1)
+  MAplotter(res.0360, col1=sample.pal[1], col2=sample.pal[7],title1="0000", title2="0360", geneNameIDList = ap1)
+  MAplotter(res.01440, col1=sample.pal[1], col2=sample.pal[8],title1="0000", title2="1440", geneNameIDList = ap1)
+  
+  if(makePDF == T){
+    dev.off()
+  }
+}
+
+
+#----------------#
+# GO ENRICHMENTS #
+#----------------#
+# Make GO graphs for each comparison vs 0 ------------------------------------------------------------------------> *** GOPLOT ***
+if(GOplot == T){
+  if(makePDF == T){
+    pdf(file=file.path(outputDir, "countPlot.pdf"), width=12, height=6)
+  }
+  
+  # Plot settings
+  par(mar=c(3,2,1,2))
+  par(mfrow=c(2,4))
+  
+  # Plot each with shrunken LFC, LRT p-val
+  MAplotter(res.030, col1=sample.pal[1], col2=sample.pal[2],title1="0000", title2="0030", geneNameIDList = ap1)
+  MAplotter(res.060, col1=sample.pal[1], col2=sample.pal[3],title1="0000", title2="0060", geneNameIDList = ap1)
+  MAplotter(res.090, col1=sample.pal[1], col2=sample.pal[4],title1="0000", title2="0090", geneNameIDList = ap1)
+  MAplotter(res.0120, col1=sample.pal[1], col2=sample.pal[5],title1="0000", title2="0120", geneNameIDList = ap1)
+  MAplotter(res.0240, col1=sample.pal[1], col2=sample.pal[6],title1="0000", title2="0240", geneNameIDList = ap1)
+  MAplotter(res.0360, col1=sample.pal[1], col2=sample.pal[7],title1="0000", title2="0360", geneNameIDList = ap1)
+  MAplotter(res.01440, col1=sample.pal[1], col2=sample.pal[8],title1="0000", title2="1440", geneNameIDList = ap1)
+  
+  if(makePDF == T){
+    dev.off()
+  }
+}
+
+##############
+# SUBSETTING #
+##############
+
+#----------------------#
+# SHRUNKEN LFC + P-VAL #
+#----------------------#
+# subset significant genes according to LRT p-values
+res.030.sig <-  res.030[which(res.030$padj < p.thr),]
+res.060.sig <-  res.060[which(res.060$padj < p.thr),]
+res.090.sig <-  res.090[which(res.090$padj < p.thr),]
+res.0120.sig <-  res.0120[which(res.0120$padj < p.thr),]
+res.0240.sig <-  res.0240[which(res.0240$padj < p.thr),]
+res.0360.sig <-  res.0360[which(res.0360$padj < p.thr),]
+res.01440.sig <-  res.01440[which(res.01440$padj < p.thr),]
+
+
+# subset genes changing over 2-fold according to shrunken LFC
+# Note: negative fold-changes indicate higher in second sample (i.e. 0 vs *___*)
+res.030.diff <- res.030.sig[which(abs(res.030.sig$log2FoldChange) >= lfc.thr),]
+res.060.diff <- res.060.sig[which(abs(res.060.sig$log2FoldChange) >= lfc.thr),]
+res.090.diff <- res.090.sig[which(abs(res.090.sig$log2FoldChange) >= lfc.thr),]
+res.0120.diff <- res.0120.sig[which(abs(res.0120.sig$log2FoldChange) >= lfc.thr),]
+res.0240.diff <- res.0240.sig[which(abs(res.0240.sig$log2FoldChange) >= lfc.thr),]
+res.0360.diff <- res.0360.sig[which(abs(res.0360.sig$log2FoldChange) >= lfc.thr),]
+res.01440.diff <- res.01440.sig[which(abs(res.01440.sig$log2FoldChange) >= lfc.thr),]
+
+# combine all genes into one, non-redundant list
+genes.sig.diff = c(rownames(res.030.diff), rownames(res.060.diff), rownames(res.090.diff), rownames(res.0120.diff), rownames(res.0240.diff), rownames(res.0360.diff), rownames(res.01440.diff))
+genes.sig.diff = rownames(res.LRT.full)[rownames(res.LRT.full) %in% genes.sig.diff]
 
 
 
