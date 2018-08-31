@@ -1,43 +1,76 @@
 ######################################################
 # This is the script for analyzing count-matrix data #
-#     from the RNAcluster pipeline on killdevil.     #
+#     from the RNAcluster pipeline on longleaf.      #
 ######################################################
 
 
-#===========================================================================================================#
-#                                                Initialize                                                 #
-#===========================================================================================================#
+#############################################################################################################
+#                                                                                                           #
+#                                            I N I T I A L I Z E                                            #
+#                                                                                                           #
+#############################################################################################################
+
+#-------------------------------------------------------------------------------------#
+#                                       Libraries                                     #
+#-------------------------------------------------------------------------------------#
+
+# Load any required libraries
+library(limma)
+library(biomaRt)
+library(org.Hs.eg.db)
+library(GO.db)
+library(DESeq2)
+library(Sushi2)
+library(ggplot2)
+library(pcaExplorer)
+library(ReportingTools)
+library(NbClust)
+library(pals)
+library(readr)
 
 
-#------------------------------------------------ Settings ---------------------------------------------------#
+#------------------------------------------------------------------------------------#
+#                                       Settings                                     #
+#------------------------------------------------------------------------------------#
 
-################
-# RUN SETTINGS #
-################
+#                    ################                    #
+#--------------------# RUN SETTINGS #--------------------#
+#                    ################                    #
+
 # Make PDFs or run in Rstudio only?
 makePDF = T
 
+# Make new directory for today's figures?
+newDir = T
+
 # Read in from raw data?
-readRaw = T
+readRaw = F
 
 # Recreate dds and results files?
 runDESeq = F
 runShrink = F
 
 # Make which plots/files?
-txiPlot = T
+txiPlot = F
 PCAint = F
-PCAplot = T
-countPlot = T
-MAplot = T
-GOplot = T
+PCAplot = F
+countPlot = F
+MAplot = F
+GOplot = F
+LFCclusterOpt = F
+LFCkclustPlot = F
+LFCkclustHeatPlot = T
+LFCorderPlot = F
+countClusterOpt = F
+countKclustPlot = F
+countKclustHeatPlot = F
 
 
 
+#                   ##################                   #
+#-------------------# COLOR SETTINGS #-------------------#
+#                   ##################                   #
 
-##################
-# COLOR SETTINGS #
-##################
 # Assign sample colors for PCA, plot counts
 sample.pal=parula(8)
 
@@ -46,17 +79,20 @@ BPcol <- "dodgerblue2"
 CCcol <- "firebrick2"
 MFcol <- "grey"
 
+# Assign colors for clusters
+k.colors <- brewer.dark2(8)
 
-#################
-# PLOT SETTINGS #
-#################
-par(mar=c(1,1,1,1))
-par(mfrow=c(1,1))
+# Assign colors for heatmaps
+heatmap.min = "red"
+heatmap.mid = "white"
+heatmap.max = "blue"
 
 
-#####################
-# VARIABLE SETTINGS #
-#####################
+
+#                  #####################                  #
+#------------------# VARIABLE SETTINGS #------------------# 
+#                  #####################                  #
+
 # Assign project variables
 proj = 'LIMA'
 projNum = '2-3.1.1'
@@ -64,45 +100,37 @@ sort = 'trmt'
 
 transformType = "var"
 
-# Assign cutoffs
+# Assign cutoffs for subsetting
 p.thr = .01
 lfc.thr = 1
 
-# Assign output directory for PDFs, CSVs, etc.
-outputName = paste(proj, projNum, Sys.Date(), sep="_")
-outputDir = file.path("/Users/phanstiel3/Desktop", outputName)
-#outputDir = file.path("/Users/phanstiel3/Research/Data/Projects", proj, "rna/diff")
+# Set default output directory
+outputDir = file.path("/Users/phanstiel3/Desktop")
 
-# Make output directory (in case it's necessary)
-dirCmd = paste("mkdir", outputDir, sep=" ")
-system(dirCmd)
-
-# Assign GO marts
-mart <- useMart("ENSEMBL_MART_ENSEMBL", dataset = "hsapiens_gene_ensembl", host= "www.ensembl.org")
-
-
-##################
-# LOAD LIBRARIES #
-##################
-# Load any required libraries
-library(limma)
-library(biomaRt)
-library(org.Hs.eg.db)
-library(GO.db)
-
-library(DESeq2)
-library(Sushi2)
-library(colorspace)
-library(pheatmap)
-library(ggplot2)
-library(pcaExplorer)
-library(ReportingTools)
-library(factoextra)
-library(NbClust)
-library(pals)
+# Assign + make output directory for PDFs, CSVs, etc.
+if(newDir == T){
+  
+  # Assign new output dir
+  outputName = paste(proj, projNum, Sys.Date(), sep="_")
+  outputDir = file.path("/Users/phanstiel3/Desktop", outputName)
+  #outputDir = file.path("/Users/phanstiel3/Research/Data/Projects", proj, "rna/diff")
+  
+  # Make dir if necessary
+  dirCmd = paste("mkdir", outputDir, sep=" ")
+  system(dirCmd)
+  
+}
 
 
-#------------------------------------------------ Functions ------------------------------------------------#
+
+
+#--------------------------------------------------------------------------------------#
+#                                      Functions                                       #
+#--------------------------------------------------------------------------------------#
+
+#                       #########                       #
+#-----------------------# BASIC #-----------------------#
+#                       #########                       #
 
 # General function for rounding a number to a variable base
 mround <- function(x,base, mode="std")
@@ -143,6 +171,47 @@ nameExtend <- function(shortName, longKey = longGeneKey, abridgedKey = abridgedG
 }
 
 
+# Function for combining replicates in a 16x(many genes) matrix 
+combineReps <- function(matrix, new.colnames)
+{
+  newMatrix = c()
+  for (i in seq(1,ncol(matrix)/2))
+  {
+    tempMatrix = matrix(data=c(matrix[,i], matrix[,i+ncol(matrix)/2]), ncol=2, byrow=F)
+    newCol = apply(tempMatrix,1,median)
+    newMatrix  = cbind(newMatrix,newCol)
+  }
+  rownames(newMatrix) = rownames(matrix)
+  
+  if(!is.null(new.colnames)){
+    colnames(newMatrix) = new.colnames
+  }
+  
+  return(newMatrix)
+}
+
+
+# Function for coloring heatmap based on breaks
+makeBreaks <- function(maxval, num, min.col, mid.col, max.col)
+{
+  
+  # Make breaks according to absolute max value (negative needs one less)
+  pos.breaks = c(seq(0, maxval, length.out=num))
+  neg.breaks = c(seq(-maxval, 0, length.out=num))
+  neg.breaks = neg.breaks[1:(length(neg.breaks)-1)]
+  
+  # Make color ramp (length = 2*num)
+  colors = c(colorRampPalette(colors=c(min.col, mid.col))(length(neg.breaks)-1),
+             colorRampPalette(colors=c(mid.col, max.col))(length(pos.breaks)))
+  
+}
+
+
+
+#                      ############                      #
+#----------------------# GOI PLOT #----------------------#
+#                      ############                      #
+
 # Function for circling (and optionally labeling) a list of genes on an MA plot
 geneGroupPlot <- function(results, geneName, geneID, abridgedKey = abridgedGeneKey)
 {
@@ -161,59 +230,65 @@ geneGroupPlot <- function(results, geneName, geneID, abridgedKey = abridgedGeneK
 }
 
 
+#                      ############                      #
+#----------------------# MA PLOTS #----------------------#
+#                      ############                      #
 # Function for plotting all MA-plots
 MAplotter <- function(results, col1="dodgerblue2", col2="firebrick2", title1="Neg", title2="Pos", geneNameIDList=NULL, pval = .1)
 {
+  # Find significantly pos/neg genes
   resSig <- results[which(results$padj <= pval),]
   resPos <- resSig[which(resSig$log2FoldChange > 0),]
   resNeg <- resSig[which(resSig$log2FoldChange < 0),]
   
+  # Set graph bounds
   min.LFC = mround(min(results[,2][!is.na(results[,2])]), 5, "floor")
   max.LFC = mround(max(results[,2][!is.na(results[,2])]),5, "ceiling")
   
   max.counts = mround(max(results[,2][!is.na(results[,2])]), 1000000, "ceiling")
   
+  # Plot all points + highlight significant points
   plot(results[,1], results[,2], log="x", xlim=c(.15, max.counts), ylim=c(min.LFC, max.LFC), cex=.25, col="gray38", pch=19, xlab="", ylab="")
   points(resNeg[,1], resNeg[,2], pch=19, cex=.25, col=col1)
   points(resPos[,1], resPos[,2], pch=19, cex=.25, col=col2)
   lines(c(.15, max.counts), c(0,0), col=alpha("indianred1", .5), lwd=3)
   
+  # Add titles
   main.title = paste("MA-Plot:", title1, "vs", title2, sep=" ")
   title(main=main.title)
   title(xlab="mean of normalized counts", line=2)
   title(ylab="log2 fold change", line=2.5)
   
+  # Circle genes of interest
   if(!is.null(geneNameIDList)){
     geneNames <- geneNameIDList[,1]
     geneIDs <- geneNameIDList[,2]
     geneGroupPlot(results, geneNames, geneIDs)
   }
   
+  # Add legend
   legtxt = c(paste0(title1," (n=",nrow(resPos), ")"), paste0(title2," (n=",nrow(resNeg), ")"))
   legend("topright", legend=legtxt, pch=19, col=c(col1, col2), cex=.8)
 }  
 
 
+#                   ##################                   #
+#-------------------# GO ENRICHMENTS #-------------------#
+#                   ##################                   #
 # limma-based GO enrich function
-GOenrich <- function(set,background, mart=mart)
+GOenrich <- function(set,bkgd, ensembl.entrez, speciesName = "Hs")
 {
-  bkgd <- c(set,background)
-  bkgd <- bkgd[!duplicated(bkgd)]
-  
-  ensembl2entrez <- getBM(filters="ensembl_gene_id",attributes=c("ensembl_gene_id", "entrezgene"), values=bkgd, mart=mart)
-  
-  set_entrez <- ensembl2entrez[which(ensembl2entrez[,1] %in% set),2]
-  bkgd_entrez <- ensembl2entrez[which(ensembl2entrez[,1] %in% bkgd),2]
+  set_entrez <- ensembl.entrez[which(ensembl.entrez[,1] %in% set),2]
+  bkgd_entrez <- ensembl.entrez[which(ensembl.entrez[,1] %in% bkgd),2]
   
   set_entrez = set_entrez[complete.cases(set_entrez)]
   bkgd_entrez = bkgd_entrez[complete.cases(bkgd_entrez)]
   
-  enriched = goana(de=set_entrez, universe=bkgd_entrez,species="Hs")
+  enriched = goana(de=set_entrez, universe=bkgd_entrez,species=speciesName)
   enriched = enriched[order(enriched$P.DE),]
   
   return(enriched)
 }
-
 
 # Wrap text functions for plotting GO Enrichments
 wrap.it <- function(x, len)
@@ -226,41 +301,7 @@ wrap.labels <- function(x, len)
   lapply(x,wrap.it,len)
 }
 
-
-# Function for running GO enrichments for up/down regulated genes
-GOrunner <- function(results, dir)
-{
-  # Extract genes enriched in either sample (neg: higher in first [het]; pos: higher in second [los])
-  pos <- rownames(results[which(results$padj < .05 & results$log2FoldChange > 0),])
-  neg <- rownames(results[which(results$padj < .05 & results$log2FoldChange < 0),])
-  back <- rownames(results)
-  
-  
-  # Convert gene names to those without the decimal points for compatibility with BioMart
-  posSplit <- strsplit(pos, "[.]")
-  posAb <- unlist(posSplit)[2*(1:length(pos))-1]
-  
-  negSplit <- strsplit(neg, "[.]")
-  negAb <- unlist(negSplit)[2*(1:length(neg))-1]
-  
-  backSplit <- strsplit(back, "[.]")
-  backAb <- unlist(backSplit)[2*(1:length(back))-1]
-  
-  
-  # Run the GO Enrichment function
-  if(dir="pos"){
-    enrich <- GOenrich(posAb,backAb)
-  }
-  
-  if(dir="neg"){
-    enrich <- GOenrich(negAb,backAb)
-  }
-  
-  return(enrich)
-}
-
-
-# Function for assigning colors to different GO groups
+# Function for assigning colors to different GO terms
 GOcolor <- function(list)
 {
   list[list=="BP"] <- BPcol
@@ -270,21 +311,378 @@ GOcolor <- function(list)
   return(list)
 }
 
-
-# Function for combining replicates in a 16x(many genes) matrix 
-combineReps <- function(matrix)
+# Function for running GO enrichments for up/down regulated genes and plotting the top n
+GOplotter <- function(results, pval = .05, LFC = 0, n=5, color1=NULL, color2=NULL, title1="Pos", title2="Neg")
 {
-  newMatrix = c()
-  for (i in seq(1,ncol(matrix)/2))
-  {
-    tempMatrix = matrix(data=c(matrix[,i], matrix[,i+ncol(matrix)/2]), ncol=2, byrow=F)
-    newCol = apply(tempMatrix,1,median)
-    newMatrix  = cbind(newMatrix,newCol)
-  }
-  rownames(newMatrix) = rownames(matrix)
+  # Extract genes enriched in either sample (neg: higher in first [het]; pos: higher in second [los])
+  pos <- rownames(results[which(results$padj < pval & results$log2FoldChange > LFC),])
+  neg <- rownames(results[which(results$padj < pval & results$log2FoldChange < LFC),])
+  back <- rownames(results)
   
-  return(newMatrix)
+  
+  # Convert gene names to those without the decimal points for compatibility with BioMart
+  pos <- nameAbridge(pos)
+  neg <- nameAbridge(neg)
+  back <- nameAbridge(back)
+  
+  
+  # Run the GO Enrichment function
+  posEnrich <- GOenrich(pos,back,ensembl2entrez)
+  negEnrich <- GOenrich(neg,back,ensembl2entrez)
+  
+  # Make list of top 5 p-values, names, colors
+  GOval <- c(-log(posEnrich[n:1,5]), log(negEnrich[n:1,5]))
+  GOhit <- c(posEnrich[n:1,1], negEnrich[n:1,1])
+  
+  if(any(is.null(color1), is.null(color2))){
+    GOcol <- c(posEnrich[n:1,2], negEnrich[n:1,2])
+    GOcol <- GOcolor(GOcol)
+  }
+  else{
+    GOcol <- c(rep(c(color2, color1), each=n))
+  }
+  
+  # Set graph bounds
+  min.val = mround(min(GOval), 5, "floor")
+  max.val = mround(max(GOval), 5, "ceiling")
+  
+  bound = max(abs(min.val), abs(max.val))
+  
+  # Plot the top n enrichments
+  main.title = paste(title1, "vs", title2, "GO enrichments", sep=" ")
+  plot <- barplot(GOval, horiz=T, main=main.title, col=GOcol, xlim=c(-bound, bound), xlab="log(P-value)")
+  text(x=rep(c(2,-2),each=n),
+       y=plot, labels=wrap.labels(GOhit,30), cex=.8, font=2,
+       pos=rep(c(4,2),each=n))
 }
+
+
+
+#                      ##############                    #
+#----------------------# SUBSETTING #--------------------#
+#                      ##############                    #
+# Function for subsetting all genes according to p-value and LFC thresholds for 1 v 1 comparisons
+subsetter <- function(results1, results2, results3, results4, results5, results6, results7, p.val=p.thr, lfc=lfc.thr){
+  
+  # Subset significant genes according to LRT p-values
+  res1.sig = results1[which(results1[,5] < p.val),]
+  res2.sig = results2[which(results2[,5] < p.val),]
+  res3.sig = results3[which(results3[,5] < p.val),]
+  res4.sig = results4[which(results4[,5] < p.val),]
+  res5.sig = results5[which(results5[,5] < p.val),]
+  res6.sig = results6[which(results6[,5] < p.val),]
+  res7.sig = results7[which(results7[,5] < p.val),]
+  
+  # subset genes according to shrunken LFC
+  # Note: negative fold-changes indicate higher in second sample (i.e. 0 vs *___*)
+  res1.diff <- res1.sig[which(abs(res1.sig[,2]) >= lfc),]
+  res2.diff <- res2.sig[which(abs(res2.sig[,2]) >= lfc),]
+  res3.diff <- res3.sig[which(abs(res3.sig[,2]) >= lfc),]
+  res4.diff <- res4.sig[which(abs(res4.sig[,2]) >= lfc),]
+  res5.diff <- res5.sig[which(abs(res5.sig[,2]) >= lfc),]
+  res6.diff <- res6.sig[which(abs(res6.sig[,2]) >= lfc),]
+  res7.diff <- res7.sig[which(abs(res7.sig[,2]) >= lfc),]
+  
+  # combine all genes into one, non-redundant list
+  geneList.sig.diff = c(rownames(res1.diff), rownames(res2.diff), rownames(res3.diff), rownames(res4.diff), rownames(res5.diff), rownames(res6.diff), rownames(res7.diff))
+  geneList.sig.diff = rownames(results1)[rownames(results1) %in% geneList.sig.diff]
+ 
+  return(geneList.sig.diff) 
+}
+
+
+
+#                     ###############                    #
+#---------------------# LFC SORTING #--------------------#
+#                     ###############                    #
+# Function to find the number of time points where LFC > 2
+span.function <- function(matrix.row){
+  length(which(abs(matrix.row[1:7]) >= lfc.thr))
+}
+
+# Function to find the time point where the LFC is greatest
+max.function <- function(matrix.row){
+  which.max(matrix.row[1:7])
+}
+
+# Function to find the earliest time point where LFC > 2
+first.function <- function(matrix.row){
+  min(which(abs(matrix.row[1:7]) >= lfc.thr))
+}
+
+# Function to make the LFC matrix from shrunken results objects
+LFCmatrixMaker <- function(geneList, results1, results2, results3, results4, results5, results6, results7){
+  
+  # Make empty matrix
+  LFCmatrix = matrix(nrow=length(geneList), ncol=7)
+  
+  # Fill with LFC from 1 v 1 results
+  LFCmatrix[,1] = results1[,2][which(rownames(results1) %in% geneList)]
+  LFCmatrix[,2] = results2[,2][which(rownames(results2) %in% geneList)]
+  LFCmatrix[,3] = results3[,2][which(rownames(results3) %in% geneList)]
+  LFCmatrix[,4] = results4[,2][which(rownames(results4) %in% geneList)]
+  LFCmatrix[,5] = results5[,2][which(rownames(results5) %in% geneList)]
+  LFCmatrix[,6] = results6[,2][which(rownames(results6) %in% geneList)]
+  LFCmatrix[,7] = results7[,2][which(rownames(results7) %in% geneList)]
+  
+  # Apply functions for sorting
+  LFCmatrix = cbind(LFCmatrix, apply(LFCmatrix, 1, span.function))
+  LFCmatrix = cbind(LFCmatrix, apply(LFCmatrix, 1, max.function))
+  LFCmatrix = cbind(LFCmatrix, apply(LFCmatrix, 1, first.function))
+  LFCmatrix = cbind(LFCmatrix, results1$baseMean[which(rownames(results1) %in% geneList)])
+  
+  # Set rownames to geneID, colnames to sample (compared to 0) + sorting parameter
+  rownames(LFCmatrix) = geneList
+  colnames(LFCmatrix) = c("30", "60", "90", "120", "240", "360", "1440", "tp.span", "tp.max", "tp.first", "base.means")
+  
+  return(LFCmatrix)
+}
+
+# Function for reordering and plotting LFC matrix
+LFCplot <- function(LFC.matrix, cluster, order, truncate=5,geneNameIDList=NULL, k=7, maxval=NULL, main.title=NULL){
+  
+  # Convert name inputs for cluster/order into column numbers (based on build of LFC.matrix)
+  conversion = c("tp.span"=8, "tp.max"=9, "tp.first"=10, "base.means"=11)
+  
+  if(is.character(cluster)){
+    cluster = conversion[cluster]
+  }
+  
+  if(is.character(order)){
+    order = conversion[order]
+  }
+  
+  # Make titles
+  if(is.null(main.title)){
+    if(cluster =="tp.span" | cluster == 8){
+      title1 = "Number of TP with LFC above threshold"
+    }
+    if(cluster =="tp.max" | cluster == 9){
+      title1 = "TP of max LFC"
+    }
+    if(cluster =="tp.first" | cluster == 10){
+      title1 = "First TP with LFC above threshold"
+    }
+    if(cluster =="base.means" | cluster == 11){
+      title1 = "Mean counts"
+    }
+    
+    
+    if(order =="tp.span" | order == 8){
+      title2 = "Number of TP with LFC above threshold"
+    }
+    if(order =="tp.max" | order == 9){
+      title2 = "TP of max LFC"
+    }
+    if(order =="tp.first" | order == 10){
+      title2 = "First TP with LFC above threshold"
+    }
+    if(order =="base.means" | order == 11){
+      title2 = "Mean counts"
+    }
+    main.title = paste0(title1, " > ", title2)
+  }
+  
+  # Reorder LFC matrix according to (1) cluster and (2) order parameters
+  LFC.matrix.order = LFC.matrix[order(LFC.matrix[,cluster], LFC.matrix[,order]),]
+  
+  # Identify gaps between sections
+  gapList = c()
+  for(i in 1:(k-1)){
+    gapList = c(gapList, which(LFC.matrix.order[,cluster] == i)[length(which(LFC.matrix.order[,cluster] == i))])
+  }
+  
+  # Truncate for plotting
+  if(!is.null(maxval)){
+    LFC.matrix.order[which(LFC.matrix.order>maxval)] = maxval
+    LFC.matrix.order[which(LFC.matrix.order<(-maxval))] = (-maxval)
+  }
+  
+  # Read in genes of interest to highlight
+  geneNames = c()
+  geneIDs = c()
+  
+  if(!is.null(geneNameIDList)){
+    geneNames <- geneNameIDList[,1]
+    geneIDs <- nameExtend(geneNameIDList[,2])
+  }
+  
+  # Plot using Sushi2
+  Sushi2::hotmap(LFC.matrix.order[,1:k], labrow=F, labcol=T, gaps=gapList, selectylabs=geneIDs, selectylabs.label = geneNames)
+  mtext(side=3,line=1.0,font=2,text=main.title,cex=.5)
+}
+
+
+
+#                      ###########                        #
+#----------------------# K-MEANS #------------------------#
+#                      ###########                        #
+# Function for k clustering
+kclust <- function(matrix, k, type){
+  if(type=="hclust" | type=="hierarchical" | type=="h"){
+    clust = hclust(dist(matrix))
+    cut = cutree(clust, k=k)
+  }
+  
+  if(type=="kmeans" | type=="k"){
+    clust = kmeans(matrix, centers=k)
+    cut = clust$cluster
+  }
+  
+  return(cut)
+}
+
+# Function for plotting kmeans heatmap
+kHotmap <- function(kmatrix.norm, cut, cluster.order, k.colors=NULL, maxval=NULL, geneNameIDList=NULL, title=""){
+  
+  # Identify number of samples
+  n = ncol(kmatrix.norm)
+  
+  # Identify number of clusters
+  k = max(cut)
+  
+  # Order matrix and cluster assignment list in order of most --> least changed
+  kmatrix.norm.order = kmatrix.norm[order(rowMax(kmatrix.norm), decreasing=T),]
+  cut.order = cut[rownames(kmatrix.norm.order)]
+
+  # Separate clusters in matrix according to desired order
+  kmatrix.norm.order = kmatrix.norm.order[order(match(cut.order, cluster.order)),]
+  cut.order = cut[rownames(kmatrix.norm.order)]
+  
+  # Truncate values
+  if(!is.null(maxval)){
+    kmatrix.norm.order[which(kmatrix.norm.order>maxval)] = maxval
+    kmatrix.norm.order[which(kmatrix.norm.order<(-maxval))] = (-maxval)
+  }
+  
+  # Assign cluster colors, if selected
+  cluster.cols=c()
+  if(!is.null(k.colors)){
+    cluster.cols = k.colors[cut.order]
+  }
+  
+  # Combine LFC and cluster assignments into one matrix to find gaps
+  kmatrix.norm.order.gaps = cbind(kmatrix.norm.order, cut.order)
+  
+  # Identify gaps between clusters
+  gaps.k = c()
+  for(i in 1:(k-1)){
+    gaps.k = c(gaps.k, which(kmatrix.norm.order.gaps[,(n+1)] == cluster.order[i])[length(which(kmatrix.norm.order.gaps[,(n+1)] == cluster.order[i]))])
+  }
+  
+  # Set heatmap colors
+  map.ramp = makeBreaks(maxval=maxval, num=100, min.col=heatmap.min, mid.col=heatmap.mid, max.col=heatmap.max)
+  
+  # Circle genes of interest
+  geneNames=c()
+  geneIDs=c()
+  if(!is.null(geneNameIDList)){
+    geneNames <- geneNameIDList[,1]
+    geneIDs <- nameExtend(geneNameIDList[,2])
+  }
+  
+  # Plot heatmap
+  Sushi2::hotmap(kmatrix.norm.order[,1:7], col=map.ramp, labrow=F, labcol=T, gaps=gaps.k, selectylabs=geneIDs, selectylabs.label=geneNames, rowcolors=cluster.cols)
+  Sushi::addlegend(c(-3,3), palette=colorRampPalette(colors=c(heatmap.min, heatmap.mid, heatmap.max)), title="Normalized Transcript Counts", bottominset=.5, xoffset=.11, title.offset = .07)
+  mtext(side=3,line=1.0,font=2,text=title,cex=2)
+}
+
+
+
+#                        #######                        #
+#------------------------# CSV #------------------------#
+#                        #######                        #
+# Function for determining from LFC and p-values which sample is higher
+higherIn <- function(results, sampleName1, sampleName2, pval.cutoff){
+  
+  foldChange = results$log2FoldChange
+  pVal = results$padj
+  
+  indicator = rep("", times=nrow(results))
+  for(n in seq(1, length(geneList))){
+    if(is.na(pVal[n])){
+      indicator[n] = "Neither"
+    } else{
+      if((pVal[n] <= pval.cutoff) && (foldChange[n] > 0)){
+        indicator[n] = sampleName2
+      }
+      if((pVal[n] <= pval.cutoff) && (foldChange[n] < 0)){
+        indicator[n] = sampleName1
+      }
+      if(pVal[n] > pval.cutoff){
+        indicator[n] = "Neither"
+      }
+    }
+  }
+  
+  return(indicator)
+}
+
+# Function for extracting count info for given samples
+countExtract <- function(dds.obj, sampleName1, sampleName2, sample1, sample2){
+
+  count1.1 = assay(dds.obj)[,sample1]
+  count1.2 = assay(dds.obj)[,(sample1+8)]
+  
+  count2.1 = assay(dds.obj)[,sample2]
+  count2.2 = assay(dds.obj)[,(sample2+8)]
+  
+  name.count1.1 = paste("count", sampleName1, ".1")
+  name.count1.2 = paste("count", sampleName1, ".2")
+  
+  name.count2.1 = paste("count", sampleName2, ".1")
+  name.count2.2 = paste("count", sampleName2, ".2")
+  
+  count.df = data.frame(name.count1.1 = count1.1, name.count1.2 = count1.2, name.count2.1=count2.1, name.count2.2=count2.2)
+  
+  return(count.df)
+}
+
+# Function for determining which genes are part of a set
+goiCheck <- function(matrix, GoI){
+  
+  geneIDlist = nameAbridge(rownames(matrix))
+  
+  indicator = rep("", times=length(geneIDlist))
+  for (n in seq(1, length(geneIDlist))){
+    if (geneIDlist[n] %in% GoI){
+      indicator[n] = "Y"
+    } else{
+      indicator[n] = "N"
+    }
+  }
+  
+  return(indicator)
+  
+}
+
+# Function for obtaining a list of matched ENSEMBL + HGNC IDs
+ENSEMBL.HGNC.extract <- function(geneList){
+  
+  # convert gene IDs to abridged, BioMaRT-compatible ENSEMBL IDs
+  ENSEMBL = nameAbridge(rownames(geneList))
+  
+  # make ensembl-hgnc db with BioMaRT
+  nameDb = getBM(attributes=c('ensembl_gene_id', 'hgnc_symbol'), filters='ensembl_gene_id', values=ENSEMBL, mart=mart)
+
+  # remove duplicated rows
+  if(length(which(duplicated(nameDb$ensembl_gene_id))) > 0){
+    nameDb = nameDb[-which(duplicated(nameDb$ensembl_gene_id)),]
+  }
+  
+  # TEMPORARY FIX: Remove rows that didn't have ensembl_gene_id's fetched with BioMart, so for loop can work
+  ENSEMBL = ENSEMBL[(ENSEMBL %in% nameDb$ensembl_gene_id)]
+  
+  # order according to ENSEMBL name list (BioMaRt comes out a different order than results)
+  HGNC = rep("", times=length(ENSEMBL))
+  for(n in seq(1, length(ENSEMBL))){
+    HGNC[n] = nameDb$hgnc_symbol[which(nameDb$ensembl_gene_id == ENSEMBL[n])]
+  }
+  
+  ENSEMBL.HGNC = data.frame(ENSEMBL, HGNC)
+  return(ENSEMBL.HGNC)
+}
+
 
 
 # Function for writing data to a csv
@@ -326,16 +724,21 @@ geneWrite <- function(res, geneList, symbolList, count1_1, count1_2, count2_1, c
 
 
 
-#===========================================================================================================#
-#                                                   Run                                                     #
-#===========================================================================================================#
+#############################################################################################################
+#                                                                                                           #
+#                                                 R U N                                                     #
+#                                                                                                           #
+#############################################################################################################
 
-#----------------------------------------------- Read in ---------------------------------------------------#
+#------------------------------------------------------------------------------------#
+#                                       Read in                                      #
+#------------------------------------------------------------------------------------#
 
-################
-# READ IN DATA #
-################
-# Read in the txi file, as defined in the config file -----------------------------------------------------------> *** READRAW ***
+#                    ################                    #
+#--------------------# READ IN DATA #--------------------#
+#                    ################                    #
+
+# Read in the txi file, as defined in the config file - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -> *** READRAW ***
 if(readRaw == T){
   # Read in config file
   configPath <- paste0('/Users/phanstiel3/Research/Data/Projects/', proj, '/rna/proc/tximport/', proj, '_', projNum, '_samples.csv')
@@ -347,7 +750,7 @@ if(readRaw == T){
 }
 
 
-# Plot read info based on the txi file --------------------------------------------------------------------------> *** TXIPLOT ***
+# Plot read info based on the txi file - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - > *** TXIPLOT ***
 if(txiPlot == T){
   
   if(makePDF == T){
@@ -356,6 +759,7 @@ if(txiPlot == T){
   
   # Plot count info
   par(mfrow=c(2,2))
+  par(mar=c(5,4,4,2))
   
   txi.x.labels = substr(colnames(txi$counts), 16, 25)
   
@@ -383,10 +787,11 @@ if(txiPlot == T){
 
 
 
-#############
-# RUN DESEQ #
-#############
-# Create dds and transformed dds  ------------------------------------------------------------------------------> *** RUNDESEQ ***
+#                     #############                     #
+#---------------------# RUN DESEQ #---------------------#
+#                     #############                     #
+
+# Create dds and transformed dds - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -> *** RUNDESEQ ***
 if(runDESeq == T){
   # Create data frame with sample names and whatever condition you want to distinguish them by (config$Condition, config$Cell.Type, etc.)
   colData <- data.frame(condition = factor(config$Condition), rep = factor(config$BioRep), row.names = config$Name)
@@ -411,7 +816,7 @@ if(runDESeq == T){
   }
 }  
 
-# Find shrunken LFC for each comparison vs 0 ------------------------------------------------------------------> *** RUNSHRINK ***
+# Find shrunken LFC for each comparison vs 0 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - > *** RUNSHRINK ***
 if(runShrink == T){
   res.030 <- lfcShrink(dds, coef="condition_30_vs_0", type="apeglm")
   res.060 <- lfcShrink(dds, coef="condition_60_vs_0", type="apeglm")
@@ -424,9 +829,10 @@ if(runShrink == T){
 
 
 
-##############
-# OTHER DATA #
-##############
+#                    ##############                    #
+#--------------------# OTHER DATA #--------------------#
+#                    ##############                    #
+
 # Make long + abridged gene list from dds 
 longGeneKey <- rownames(assay(dds))
 abridgedGeneKey <- nameAbridge(longKey)
@@ -445,16 +851,18 @@ for (n in 1:nrow(GoI))
 
 
 
-#------------------------------------------------ Analyze ----------------------------------------------------#
+#------------------------------------------------------------------------------------#
+#                                       Analyze                                      #
+#------------------------------------------------------------------------------------#
 
-#################
-# GLOBAL TRENDS #
-#################
+#                    #################                    #
+#--------------------# GLOBAL TRENDS #--------------------#
+#                    #################                    #
 
 #-------------------#
 # INTERACTIVE PLOTS #
 #-------------------#
-# PCA explorer (featuring pca2go, which requires the names be shortened to regular ENSEMBL IDs) ------------------> *** PCAINT ***
+# PCA explorer (featuring pca2go, which requires the names be shortened to regular ENSEMBL IDs) - - - - - - - - - > *** PCAINT ***
 if(PCAint == T){
   dds.rename = dds
   rownames(dds.rename) <- nameAbridge(rownames(dds.rename))
@@ -465,15 +873,18 @@ if(PCAint == T){
 #----------#
 # PCA PLOT #
 #----------#
-# Plot PCA of transformed counts --------------------------------------------------------------------------------> *** PCAPLOT ***
+# Plot PCA of transformed counts - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - > *** PCAPLOT ***
 if(PCAplot == T){
+  
   if(makePDF == T){
     pdf(file=file.path(outputDir, "PCAplot.pdf"), width=8, height=8)
   }
   
   # Plot PCA of transformed counts
   par(mfrow=c(1,1))
-  plotPCA(dds.trans, intgroup="condition")+labs(title="Transformed Counts PCA")+scale_color_manual(values=sample.pal)
+  par(mar=c(5,4,4,2))
+  
+  print(plotPCA(dds.trans, intgroup="condition")+labs(title="Transformed Counts PCA")+scale_color_manual(values=sample.pal))
   
   if(makePDF == T){
     dev.off()
@@ -484,7 +895,7 @@ if(PCAplot == T){
 #-------------#
 # PLOT COUNTS #
 #-------------#
-# Plot counts of genes of interest ----------------------------------------------------------------------------> *** COUNTPLOT ***
+# Plot counts of genes of interest - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - > *** COUNTPLOT ***
 if(countPlot == T){
   if(makePDF == T){
     pdf(file=file.path(outputDir, "countPlot.pdf"), width=8, height=8)
@@ -508,21 +919,21 @@ if(countPlot == T){
 
 
 
-#####################
-# 1 v 1 COMPARISONS #
-#####################
+#                  #####################                  #
+#------------------# 1 v 1 COMPARISONS #------------------# 
+#                  #####################                  #
 
 #----------#
 # MA PLOTS #
 #----------#
-# Make MA Plots for each comparison vs 0 -------------------------------------------------------------------------> *** MAPLOT ***
+# Make MA Plots for each comparison vs 0 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -> *** MAPLOT ***
 if(MAplot == T){
   if(makePDF == T){
-    pdf(file=file.path(outputDir, "countPlot.pdf"), width=12, height=6)
+    pdf(file=file.path(outputDir, "MAPlot.pdf"), width=12, height=6)
   }
   
   # Plot settings
-  par(mar=c(3,2,1,2))
+  par(mar=c(5,4,4,2))
   par(mfrow=c(2,4))
   
   # Plot each with shrunken LFC, LRT p-val
@@ -543,60 +954,336 @@ if(MAplot == T){
 #----------------#
 # GO ENRICHMENTS #
 #----------------#
-# Make GO graphs for each comparison vs 0 ------------------------------------------------------------------------> *** GOPLOT ***
+# Make GO graphs for each comparison vs 0 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - > *** GOPLOT ***
 if(GOplot == T){
+  
+  # Assign GO marts
+  mart <- useMart("ENSEMBL_MART_ENSEMBL", dataset = "hsapiens_gene_ensembl", host= "www.ensembl.org")
+  
+  # Set background
+  background = nameAbridge(rownames(res.030))
+  ensembl2entrez <- getBM(filters="ensembl_gene_id",attributes=c("ensembl_gene_id", "entrezgene"), values=background, mart=mart)
+  
+  # Make PDF(?) and plot
   if(makePDF == T){
-    pdf(file=file.path(outputDir, "countPlot.pdf"), width=12, height=6)
+    pdf(file=file.path(outputDir, "GOplot.pdf"), width=12, height=6)
   }
   
   # Plot settings
-  par(mar=c(3,2,1,2))
+  par(mar=c(5,4,4,2))
   par(mfrow=c(2,4))
   
-  # Plot each with shrunken LFC, LRT p-val
-  MAplotter(res.030, col1=sample.pal[1], col2=sample.pal[2],title1="0000", title2="0030", geneNameIDList = ap1)
-  MAplotter(res.060, col1=sample.pal[1], col2=sample.pal[3],title1="0000", title2="0060", geneNameIDList = ap1)
-  MAplotter(res.090, col1=sample.pal[1], col2=sample.pal[4],title1="0000", title2="0090", geneNameIDList = ap1)
-  MAplotter(res.0120, col1=sample.pal[1], col2=sample.pal[5],title1="0000", title2="0120", geneNameIDList = ap1)
-  MAplotter(res.0240, col1=sample.pal[1], col2=sample.pal[6],title1="0000", title2="0240", geneNameIDList = ap1)
-  MAplotter(res.0360, col1=sample.pal[1], col2=sample.pal[7],title1="0000", title2="0360", geneNameIDList = ap1)
-  MAplotter(res.01440, col1=sample.pal[1], col2=sample.pal[8],title1="0000", title2="1440", geneNameIDList = ap1)
+  # Plot graphs of top 5 enrichments
+  GOplotter(res.030, color1=sample.pal[1], color2=sample.pal[2], title1="0", title2="30")
+  GOplotter(res.060, color1=sample.pal[1], color2=sample.pal[3], title1="0", title2="60")
+  GOplotter(res.090, color1=sample.pal[1], color2=sample.pal[4], title1="0", title2="90")
+  GOplotter(res.0120, color1=sample.pal[1], color2=sample.pal[5], title1="0", title2="120")
+  GOplotter(res.0240, color1=sample.pal[1], color2=sample.pal[6], title1="0", title2="240")
+  GOplotter(res.0360, color1=sample.pal[1], color2=sample.pal[7], title1="0", title2="360")
+  GOplotter(res.01440, color1=sample.pal[1], color2=sample.pal[8], title1="0", title2="1440")
   
   if(makePDF == T){
     dev.off()
   }
 }
 
-##############
-# SUBSETTING #
-##############
+
+
+#                    ##############                    #
+#--------------------# SUBSETTING #--------------------# 
+#                    ##############                    #
 
 #----------------------#
 # SHRUNKEN LFC + P-VAL #
 #----------------------#
-# subset significant genes according to LRT p-values
-res.030.sig <-  res.030[which(res.030$padj < p.thr),]
-res.060.sig <-  res.060[which(res.060$padj < p.thr),]
-res.090.sig <-  res.090[which(res.090$padj < p.thr),]
-res.0120.sig <-  res.0120[which(res.0120$padj < p.thr),]
-res.0240.sig <-  res.0240[which(res.0240$padj < p.thr),]
-res.0360.sig <-  res.0360[which(res.0360$padj < p.thr),]
-res.01440.sig <-  res.01440[which(res.01440$padj < p.thr),]
+genes.sig.diff = subsetter(res.030, res.060, res.090, res.0120, res.0240, res.0360, res.01440)
 
 
-# subset genes changing over 2-fold according to shrunken LFC
-# Note: negative fold-changes indicate higher in second sample (i.e. 0 vs *___*)
-res.030.diff <- res.030.sig[which(abs(res.030.sig$log2FoldChange) >= lfc.thr),]
-res.060.diff <- res.060.sig[which(abs(res.060.sig$log2FoldChange) >= lfc.thr),]
-res.090.diff <- res.090.sig[which(abs(res.090.sig$log2FoldChange) >= lfc.thr),]
-res.0120.diff <- res.0120.sig[which(abs(res.0120.sig$log2FoldChange) >= lfc.thr),]
-res.0240.diff <- res.0240.sig[which(abs(res.0240.sig$log2FoldChange) >= lfc.thr),]
-res.0360.diff <- res.0360.sig[which(abs(res.0360.sig$log2FoldChange) >= lfc.thr),]
-res.01440.diff <- res.01440.sig[which(abs(res.01440.sig$log2FoldChange) >= lfc.thr),]
 
-# combine all genes into one, non-redundant list
-genes.sig.diff = c(rownames(res.030.diff), rownames(res.060.diff), rownames(res.090.diff), rownames(res.0120.diff), rownames(res.0240.diff), rownames(res.0360.diff), rownames(res.01440.diff))
-genes.sig.diff = rownames(res.LRT.full)[rownames(res.LRT.full) %in% genes.sig.diff]
+#                   ###################                   #
+#-------------------# CLUSTERING: LFC #-------------------#
+#                   ###################                   #
+
+# Build a matrix of subsetted genes with one row per gene, one column per comparison, and extra columns with sorting parameters
+LFCmatrix.cat = LFCmatrixMaker(genes.sig.diff, res.030, res.060, res.090, res.0120, res.0240, res.0360, res.01440)
+
+# Make another matrix without the sorting parameters
+LFCmatrix.k = LFCmatrix.cat[,1:7]
+
+#---------#
+# K-MEANS #
+#---------#
+# Center and scale data
+LFCmatrix.k.norm <- (LFCmatrix.k - rowMeans(LFCmatrix.k))/rowSds(LFCmatrix.k + .5)
+
+# Find optimal number of clusters - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - > *** LFCCLUSTEROPT ***
+if(LFCclusterOpt == T){
+  
+  if(makePDF == T){
+    pdf(file=file.path(outputDir, "LFCclusterOpt.pdf"), width=8, height=8)
+  }
+  
+  # Method 1: WSS
+  fviz_nbclust(LFCmatrix.k.norm, kmeans, method = "wss")
+  
+  # Method 2: Silhouette
+  fviz_nbclust(LFCmatrix.k.norm, kmeans, method = "silhouette")
+  
+  # Method 3: Nb clustering
+  nb <- NbClust(LFCmatrix.k.norm, distance = "euclidean", min.nc = 2,
+                max.nc = 10, method = "kmeans")
+  fviz_nbclust(nb)
+  
+  if(makePDF == T){
+    dev.off()
+  }
+  
+}
+
+# Set the number of clusters
+LFC.k <- 8
+
+# Set seed to preserve manual ordering
+set.seed(733)
+
+# Perform clustering
+LFC.cut = kclust(LFCmatrix.k.norm, k=LFC.k, type="k")
+
+# Plot the individual k clusters - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -> *** LFCKCLUSTPLOT ***
+if(LFCkclustPlot == T){
+  
+  if(makePDF == T){
+    pdf(file=file.path(outputDir, "LFCkclustersPlot.pdf"), width=12, height=6)
+  }
+  
+  # Plot each cluster
+  par(mar=c(3,2,1,2))
+  par(mfrow=c(2,LFC.k/2))
+  
+  for (i in 1:LFC.k) {
+    
+    # make empty plot
+    plot(colMeans(LFCmatrix.k.norm[LFC.cut==i,]), type="n",main=paste("n=",table(LFC.cut)[i],sep=""),ylim=c(-2,2), xaxt="n", xlab="Hours after LPS treatment", ylab="Relative LFC")
+    
+    # and transparent grey lines
+    apply(LFCmatrix.k.norm[LFC.cut==i,],1,lines,col=adjustcolor("grey",alpha.f=0.1))
+    
+    # add median line
+    lines(colMeans(LFCmatrix.k.norm[LFC.cut==i,]),col=k.colors[i],lwd=2)
+    
+    # add axis
+    axis(1, at=1:(LFC.k-1), labels=c(".5", "1", "1.5", "2", "4", "6", "24"))
+  }
+
+  if(makePDF == T){
+    dev.off()
+  }
+}
+
+# Plot heatmap of k clusters  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - > *** LFCKCLUSTHEATPLOT ***
+if(LFCkclustHeatPlot == T){
+  
+  if(makePDF == T){
+    pdf(file=file.path(outputDir, "LFCkclustersHeatPlot.pdf"), width=8, height=8)
+  }
+  
+  # Set the desired order of clusters, based on their timing (manual; changes with seed)
+  LFC.cluster.order <- c(8,1,2,4,3,6,5,7)
+  
+  # Plot heatmap
+  par(mfrow=c(1,1))
+  par(mar=c(5,4,4,5))
+  
+  kHotmap(LFCmatrix.k.norm, LFC.cut, LFC.cluster.order, maxval=3, geneNameIDList=GoI, title="LFC K-Means Clustering")
+  
+  if(makePDF == T){
+    dev.off()
+  }
+}
 
 
+
+#-------------#
+# BY CATEGORY #
+#-------------#
+# Plot LFC heatmaps clustered by one parameter and sorted by the other - - - - - - - - - - - - - - - - - - > *** LFCORDERPLOT ***
+if(LFCorderPlot == T){
+  if(makePDF == T){
+    pdf(file=file.path(outputDir, "LFCorderPlot.pdf"), width=12, height=8)
+  }
+  
+  par(mfrow=c(2,3))
+  par(mar=c(5,4,4,2))
+  maxval=5
+  LFCplot(LFCmatrix.cat, cluster="tp.span", order="tp.max", geneNameIDList = GoI, maxval=maxval)
+  LFCplot(LFCmatrix.cat, cluster="tp.span", order="tp.first", geneNameIDList = GoI, maxval=maxval)
+  LFCplot(LFCmatrix.cat, cluster="tp.max", order="tp.span", geneNameIDList = GoI, maxval=maxval)
+  LFCplot(LFCmatrix.cat, cluster="tp.max", order="tp.first", geneNameIDList = GoI, maxval=maxval)
+  LFCplot(LFCmatrix.cat, cluster="tp.first", order="tp.span", geneNameIDList = GoI, maxval=maxval)
+  LFCplot(LFCmatrix.cat, cluster="tp.first", order="tp.max", geneNameIDList = GoI, maxval=maxval)
+  
+  if(makePDF == T){
+    dev.off()
+  }
+}
+
+
+
+#            ##################################           #
+#------------# CLUSTERING: TRANSFORMED COUNTS #-----------#
+#            ##################################           #
+
+# Build a matrix of subsetted genes with one row per gene, one column per comparison, and extra columns with sorting parameters
+countMatrix = dds.trans[which(rownames(vsd.LRT) %in% genes.sig.diff),]
+countMatrix = assay(countMatrix)
+
+#---------#
+# K-MEANS #
+#---------#
+
+# Center and scale data
+countMatrix.norm <- (countMatrix - rowMeans(countMatrix))/rowSds(countMatrix + .5)
+
+# Find optimal number of clusters - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -> *** CLUSTEROPT ***
+if(countClusterOpt == T){
+  
+  if(makePDF == T){
+    pdf(file=file.path(outputDir, "countClusterOpt.pdf"), width=8, height=8)
+  }
+  
+  # Method 1: WSS
+  fviz_nbclust(countMatrix.norm, kmeans, method = "wss")
+  
+  # Method 2: Silhouette
+  fviz_nbclust(countMatrix.norm, kmeans, method = "silhouette")
+  
+  # Method 3: Nb clustering
+  nb <- NbClust(countMatrix.norm, distance = "euclidean", min.nc = 2,
+                max.nc = 10, method = "kmeans")
+  fviz_nbclust(nb)
+  
+  if(makePDF == T){
+    dev.off()
+  }
+  
+}
+
+# Set the number of clusters
+count.k <- 8
+
+# Set seed to preserve manual ordering
+set.seed(733)
+
+# Perform clustering
+count.cut = kclust(countMatrix.norm, k=count.k, type="k")
+
+# Combine replicates
+countMatrix.norm.combo <- combineReps(countMatrix.norm, new.colnames=c("0", "30", "60", "90", "120", "240", "360", "1440"))
+
+# Plot the individual k clusters - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -> *** COUNTKCLUSTPLOT ***
+if(countKclustPlot == T){
+  
+  if(makePDF == T){
+    pdf(file=file.path(outputDir, "countKclustersPlot.pdf"), width=12, height=6)
+  }
+  
+  # Plot each cluster
+  par(mar=c(3,2,1,2))
+  par(mfrow=c(2,count.k/2))
+  
+  for (i in 1:count.k) {
+    
+    # make empty plot
+    plot(colMeans(countMatrix.norm.combo[count.cut==i,]), type="n",main=paste("n=",table(count.cut)[i],sep=""),ylim=c(-2,2), xaxt="n", xlab="Hours after LPS treatment", ylab="Relative expression")
+    
+    # and transparent grey lines
+    apply(countMatrix.norm.combo[count.cut==i,],1,lines,col=adjustcolor("grey",alpha.f=0.1))
+    
+    # add median line
+    lines(colMeans(countMatrix.norm.combo[count.cut==i,]),col=k.colors[i],lwd=2)
+    
+    # add axis
+    axis(1, at=1:count.k, labels=c("0",".5", "1", "1.5", "2", "4", "6", "24"))
+  }
+  
+  if(makePDF == T){
+    dev.off()
+  }
+}
+
+# Plot heatmap of k clusters  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - > *** COUNTKCLUSTHEATPLOT ***
+if(countKclustHeatPlot == T){
+  
+  if(makePDF == T){
+    pdf(file=file.path(outputDir, "countKclustersHeatPlot.pdf"), width=8, height=8)
+  }
+  
+  # Set the desired order of clusters, based on their timing (manual; changes with seed)
+  count.cluster.order <- c(8,1,2,3,5,6,4,7)
+  
+  # Plot heatmap
+  par(mfrow=c(1,1))
+  par(mar=c(5,4,4,5))
+  
+  kHotmap(countMatrix.norm.combo, count.cut, count.cluster.order, maxval=3, geneNameIDList=GoI, title="Normalized Counts Clustering")
+  
+  if(makePDF == T){
+    dev.off()
+  }
+}
+
+
+#          #######################################         #
+#----------# TSV OVERVIEWS: LFC, COUNTS, CLUSTER #---------#
+#          #######################################         #
+
+# ENSG ID
+# hgnc symbol
+# GoI?
+# Count1
+# Count2
+# Count3
+# Count4
+# Count5
+# Count6
+# Count7
+# Count8
+# LFC1
+# LFC2
+# LFC3
+# LFC4
+# LFC5
+# LFC6
+# LFC7
+# tp.span
+# tp.max
+# tp.first
+# base.mean
+# cluster(counts)
+
+# Find ENSG + HGNC pairs
+tsv.sub.ENSG.HGNC = ENSEMBL.HGNC.extract(countMatrix.combo)
+
+# Prep transformed count matrix (from countMatrix, selected for pval/LFC)
+tsv.countMatrix.combo = combineReps(countMatrix, new.colnames=c("0", "30", "60", "90", "120", "240", "360", "1440"))
+tsv.countMatrix.combo = data.frame(tsv.countMatrix.combo, count.cut)
+tsv.countMatrix.combo = tsv.countMatrix.combo[which(nameAbridge(rownames(tsv.countMatrix.combo)) %in% tsv.sub.ENSG.HGNC$ENSEMBL),]
+
+# Prep LFC matrix
+tsv.LFCmatrix = LFCmatrix.cat[which(nameAbridge(rownames(LFCmatrix.cat)) %in% tsv.sub.ENSG.HGNC$ENSEMBL),]
+
+# Identify GoI
+tsv.sub.GOI = goiCheck(tsv.countMatrix.combo, GoI$ID)
+
+# Put all the data in one dataframe
+tsv.sub <- data.frame(tsv.sub.ENSG.HGNC, tsv.sub.GOI, tsv.countMatrix.combo, tsv.LFCmatrix, 
+                      stringsAsFactors = FALSE)
+rownames(tsv.sub) = c()
+colnames(tsv.sub) = c("ENSEMBL", "HGNC", "GoI?", "0.norm.count", "30.norm.count", "60.norm.count", "90.norm.count",
+                      "120.norm.count", "240.norm.count", "360.norm.count", "1440.norm.count", "cluster", "30.LFC", 
+                      "60.LFC", "90.LFC", "120.LFC", "240.LFC", "360.LFC", "1440.LFC", "tp.span", "tp.max", "tp.first",
+                      "base.mean")
+
+# Write to csv
+write_tsv(tsv.sub, path=file.path(outputDir, "LIMA_RNA_Subset-genes.tsv"))
 
