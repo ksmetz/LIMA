@@ -386,7 +386,7 @@ par(mfrow=c(3,1))
 ap1 <- read.csv("~/Research/Documents/Projects/LIMA/RNAseq/AP1.csv", header=F)
 colnames(ap1) <- c("gene", "ID")
 for (n in 1:nrow(ap1)){
-  ap1$name[n] = nameExtend(ap1$ID[n])[[1]]
+  ap1$long.ID[n] = nameExtend(ap1$ID[n])[[1]]
 }
 
 # Plot genes of interest
@@ -398,7 +398,7 @@ n=nrow(ap1)
 par(mar=c(3,2,1,2))
 par(mfrow=c(3,mround(n,3)/3))
 for(n in 1:nrow(ap1)){
-  plotCounts(dds, ap1$name[n], main=ap1$gene[n], pch=16, col=rep(sample.pal,times=2),
+  plotCounts(dds, ap1$long.ID[n], main=ap1$gene[n], pch=16, col=rep(sample.pal,times=2),
              intgroup="condition")
 }
 
@@ -513,7 +513,7 @@ mround <- function(x,base){
 n=nrow(ap1)
 par(mfrow=c(3,mround(n,3)/3))
 for(n in 1:nrow(ap1)){
-  plotCounts(dds.LRT, ap1$name[n], main=ap1$gene[n], pch=16, col=rep(sample.pal,times=2),
+  plotCounts(dds.LRT, ap1$long.ID[n], main=ap1$gene[n], pch=16, col=rep(sample.pal,times=2),
              intgroup="condition")
 }
 
@@ -715,7 +715,7 @@ geneMatrix.plot.10.9[which(geneMatrix.plot.10.9<(-maxval))] = (-maxval)
 ap1 <- read.csv("~/Research/Documents/Projects/LIMA/RNAseq/AP1.csv", header=F)
 colnames(ap1) <- c("gene", "ID")
 for (n in 1:nrow(ap1)){
-  ap1$name[n] = nameExtend(ap1$ID[n])[[1]]
+  ap1$long.ID[n] = nameExtend(ap1$ID[n])[[1]]
 }
 
 # Plot heatmaps using Sushi2 hotmap function
@@ -723,22 +723,22 @@ for (n in 1:nrow(ap1)){
 par(mar=c(5,4,4,2))
 par(mfrow=c(1,1))
 
-Sushi2::hotmap(geneMatrix.plot.8.9, labrow=F, labcol=T, gaps=gaps8, selectylabs=ap1$name, selectylabs.label = ap1$gene)
+Sushi2::hotmap(geneMatrix.plot.8.9, labrow=F, labcol=T, gaps=gaps8, selectylabs=ap1$long.ID, selectylabs.label = ap1$gene)
 mtext(side=3,line=1.0,font=2,text="Number of TP with LFC above threshold > TP of max LFC",cex=.75)
 
-Sushi2::hotmap(geneMatrix.plot.8.10, labrow=F, labcol=T, gaps=gaps8, selectylabs=ap1$name, selectylabs.label = ap1$gene)
+Sushi2::hotmap(geneMatrix.plot.8.10, labrow=F, labcol=T, gaps=gaps8, selectylabs=ap1$long.ID, selectylabs.label = ap1$gene)
 mtext(side=3,line=1.0,font=2,text="Number of TP with LFC above threshold > Earliest LFC above threshold",cex=.75)
 
-Sushi2::hotmap(geneMatrix.plot.9.8, labrow=F, labcol=T, gaps=gaps9, selectylabs=ap1$name, selectylabs.label = ap1$gene)
+Sushi2::hotmap(geneMatrix.plot.9.8, labrow=F, labcol=T, gaps=gaps9, selectylabs=ap1$long.ID, selectylabs.label = ap1$gene)
 mtext(side=3,line=1.0,font=2,text="TP of max LFC > Number of TP with LFC above threshold",cex=.75)
 
-Sushi2::hotmap(geneMatrix.plot.9.10, labrow=F, labcol=T, gaps=gaps9, selectylabs=ap1$name, selectylabs.label = ap1$gene)
+Sushi2::hotmap(geneMatrix.plot.9.10, labrow=F, labcol=T, gaps=gaps9, selectylabs=ap1$long.ID, selectylabs.label = ap1$gene)
 mtext(side=3,line=1.0,font=2,text="TP of max LFC > Earliest LFC above threshold",cex=.75)
 
-Sushi2::hotmap(geneMatrix.plot.10.8, labrow=F, labcol=T, gaps=gaps10, selectylabs=ap1$name, selectylabs.label = ap1$gene)
+Sushi2::hotmap(geneMatrix.plot.10.8, labrow=F, labcol=T, gaps=gaps10, selectylabs=ap1$long.ID, selectylabs.label = ap1$gene)
 mtext(side=3,line=1.0,font=2,text="Earliest LFC above threshold > Number of TP with LFC above threshold",cex=.75)
 
-Sushi2::hotmap(geneMatrix.plot.10.9, labrow=F, labcol=T, gaps=gaps10, selectylabs=ap1$name, selectylabs.label = ap1$gene)
+Sushi2::hotmap(geneMatrix.plot.10.9, labrow=F, labcol=T, gaps=gaps10, selectylabs=ap1$long.ID, selectylabs.label = ap1$gene)
 mtext(side=3,line=1.0,font=2,text="Earliest LFC above threshold > TP of max LFC",cex=.75)
 #dev.off()
 
@@ -839,7 +839,7 @@ colnames(mat.order.plot) <- c("30", "60", '90', '120', '240', '360', '1440')
 ap1 <- read.csv("~/Research/Documents/Projects/LIMA/RNAseq/AP1.csv", header=F)
 colnames(ap1) <- c("gene", "ID")
 for (n in 1:nrow(ap1)){
-  ap1$name[n] = nameExtend(ap1$ID[n])[[1]]
+  ap1$long.ID[n] = nameExtend(ap1$ID[n])[[1]]
 }
 
 # Assign cluster colors
@@ -865,7 +865,7 @@ for (i in 1:(length(desired.order)-1)){
 # Plot heatmap
 par(mfrow=c(1,1))
 par(mar=c(5,4,4,2))
-Sushi2::hotmap(mat.order.plot, col=mycolors, labrow=F, labcol=T, gaps=gaps.k, selectylabs=ap1$name, selectylabs.label = ap1$gene, rowcolors=cluster.col)
+Sushi2::hotmap(mat.order.plot, col=mycolors, labrow=F, labcol=T, gaps=gaps.k, selectylabs=ap1$long.ID, selectylabs.label = ap1$gene, rowcolors=cluster.col)
 mtext(side=3,line=1.0,font=2,text="K-means LFC clusters",cex=.75)
 #dev.off()
 
@@ -973,10 +973,15 @@ vsd.LRT.sub <- vsd.LRT[which(rownames(vsd.LRT) %in% geneList),]
 mat.vsd.LRT.sub <- assay(vsd.LRT.sub)
 
 # I believe this is centering and scaling the data
-mat.vsd.LRT.sub.norm <- (mat.vsd.LRT.sub - rowMeans(mat.vsd.LRT.sub))/rowSds(mat.vsd.LRT.sub + .5)
+# # Method 1
+# mat.vsd.LRT.sub.norm <- (mat.vsd.LRT.sub - rowMeans(mat.vsd.LRT.sub))/rowSds(mat.vsd.LRT.sub + .5)
 
 # Maybe try this way?
-#mat.vsd.LRT.sub.norm <- mat.vsd.LRT.sub-rowMin(mat.vsd.LRT.sub)
+# # Method 2
+# mat.vsd.LRT.sub.norm <- mat.vsd.LRT.sub-rowMin(mat.vsd.LRT.sub)
+
+# Method 3 - No scaling
+mat.vsd.LRT.sub.norm <- mat.vsd.LRT.sub
 
 # ---------- Determine optimal number of clusters ---------- #
 
@@ -1052,9 +1057,9 @@ mat.order <- mat.max.order[order(match(cut.max.order,desired.order)),]
 
 # Trucnate values
 mat.order.plot = mat.order
-maxval = 3
-mat.order.plot[which(mat.order.plot>maxval)] = maxval
-mat.order.plot[which(mat.order.plot<(-maxval))] = (-maxval)
+# maxval = 3
+# mat.order.plot[which(mat.order.plot>maxval)] = maxval
+# mat.order.plot[which(mat.order.plot<(-maxval))] = (-maxval)
 
 #colnames(mat.order.plot) <- c("0","30", "60", '90', '120', '240', '360', '1440')
 colnames(mat.order.plot) <- c("0","0.5", "1", '1.5', '2', '4', '6', '24')
@@ -1063,7 +1068,7 @@ colnames(mat.order.plot) <- c("0","0.5", "1", '1.5', '2', '4', '6', '24')
 ap1 <- read.csv("~/Research/Documents/Projects/LIMA/RNAseq/AP1.csv", header=F)
 colnames(ap1) <- c("gene", "ID")
 for (n in 1:nrow(ap1)){
-  ap1$name[n] = nameExtend(ap1$ID[n])[[1]]
+  ap1$long.ID[n] = nameExtend(ap1$ID[n])[[1]]
 }
 ap1$color = c(rep("tan2", times=7),rep("steelblue", times=3), "black")
 
@@ -1094,7 +1099,7 @@ mycolors <- c(colorRampPalette(colors=c("firebrick2", "black"))(length(neg_break
 # Plot heatmap
 par(mfrow=c(1,1))
 par(mar=c(5,4,2,5))
-Sushi2::hotmap(mat.order.plot, col=mycolors, labrow=F, labcol=T, gaps=gaps.k, selectylabs=ap1$name, selectylabs.label = ap1$gene, selectylabs.col = ap1$color)
+Sushi2::hotmap(mat.order.plot, col=mycolors, labrow=F, labcol=T, gaps=gaps.k, selectylabs=ap1$long.ID, selectylabs.label = ap1$gene, selectylabs.col = ap1$color)
 #, rowcolors=cluster.col
 
 Sushi::addlegend(c(-3,3), palette=colorRampPalette(colors=c("firebrick2", "black","dodgerblue2")), title="Normalized Transcript Counts", bottominset=.5, xoffset=.11, title.offset = .07)
@@ -1102,8 +1107,8 @@ Sushi::addlegend(c(-3,3), palette=colorRampPalette(colors=c("firebrick2", "black
 #dev.off()
 
 
-geneMatrix.norm[which(rownames(geneMatrix.norm) %in% ap1$name),]
-mat.order.plot[which(rownames(mat.order.plot) %in% ap1$name),]
+geneMatrix.norm[which(rownames(geneMatrix.norm) %in% ap1$long.ID),]
+mat.order.plot[which(rownames(mat.order.plot) %in% ap1$long.ID),]
 
 
 
@@ -1296,7 +1301,7 @@ colnames(mat.order.plot) <- rep(c("0","30", "60", '90', '120', '240', '360', '14
 ap1 <- read.csv("~/Research/Documents/Projects/LIMA/RNAseq/AP1.csv", header=F)
 colnames(ap1) <- c("gene", "ID")
 for (n in 1:nrow(ap1)){
-  ap1$name[n] = nameExtend(ap1$ID[n])[[1]]
+  ap1$long.ID[n] = nameExtend(ap1$ID[n])[[1]]
 }
 
 # Assign cluster colors
@@ -1316,14 +1321,14 @@ mat.sushi.order.plot = cbind(mat.order.plot, cluster.col)
 gaps.k = c(701, 2764, 4625, 5187, 6138, 7416, 9861, 11676)
 
 # # Temporary fix for gene labeling: Swap ENSEMBL ID rownames for gene names for genes of interest
-# for (n in rownames(mat.order.plot)[which(rownames(mat.order.plot) %in% ap1$name)]){
-#   rownames(mat.order.plot)[rownames(mat.order.plot) == n] <- toString(ap1$gene[which(n == ap1$name)])
+# for (n in rownames(mat.order.plot)[which(rownames(mat.order.plot) %in% ap1$long.ID)]){
+#   rownames(mat.order.plot)[rownames(mat.order.plot) == n] <- toString(ap1$gene[which(n == ap1$long.ID)])
 # }
 
 # Plot heatmap
 par(mfrow=c(1,1))
 par(mar=c(5,4,4,2))
-Sushi2::hotmap(mat.order.plot, col=mycolors, labrow=F, labcol=F, gaps=gaps.k, selectylabs=ap1$name, selectylabs.label = ap1$gene, rowcolors=cluster.col)
+Sushi2::hotmap(mat.order.plot, col=mycolors, labrow=F, labcol=F, gaps=gaps.k, selectylabs=ap1$long.ID, selectylabs.label = ap1$gene, rowcolors=cluster.col)
 
 
 
