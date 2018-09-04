@@ -26,10 +26,7 @@ library(pcaExplorer)
 library(ReportingTools)
 library(NbClust)
 library(pals)
-<<<<<<< HEAD
 library(readr)
-=======
->>>>>>> f0c78920e11fc967838d625cca94470ab375459d
 
 
 #------------------------------------------------------------------------------------#
@@ -43,7 +40,7 @@ library(readr)
 # Make PDFs or run in Rstudio only?
 makePDF = T
 
-# Make new directory for today's figures?
+# Use directory specifically for today's figures?
 newDir = T
 
 # Read in from raw data?
@@ -57,16 +54,16 @@ runShrink = F
 txiPlot = F
 PCAint = F
 PCAplot = F
-countPlot = F
-MAplot = F
+countPlot = T
+MAplot = T
 GOplot = F
 LFCclusterOpt = F
 LFCkclustPlot = F
 LFCkclustHeatPlot = T
-LFCorderPlot = F
+LFCorderPlot = T
 countClusterOpt = F
-countKclustPlot = F
-countKclustHeatPlot = F
+countKclustPlot = T
+countKclustHeatPlot = T
 
 
 
@@ -340,7 +337,6 @@ GOplotter <- function(results, pval = .05, LFC = 0, n=5, color1=NULL, color2=NUL
   if(any(is.null(color1), is.null(color2))){
     GOcol <- c(posEnrich[n:1,2], negEnrich[n:1,2])
     GOcol <- GOcolor(GOcol)
-<<<<<<< HEAD
   }
   else{
     GOcol <- c(rep(c(color2, color1), each=n))
@@ -390,120 +386,7 @@ subsetter <- function(results1, results2, results3, results4, results5, results6
   # combine all genes into one, non-redundant list
   geneList.sig.diff = c(rownames(res1.diff), rownames(res2.diff), rownames(res3.diff), rownames(res4.diff), rownames(res5.diff), rownames(res6.diff), rownames(res7.diff))
   geneList.sig.diff = rownames(results1)[rownames(results1) %in% geneList.sig.diff]
- 
-  return(geneList.sig.diff) 
-}
-
-
-
-#                     ###############                    #
-#---------------------# LFC SORTING #--------------------#
-#                     ###############                    #
-# Function to find the number of time points where LFC > 2
-span.function <- function(matrix.row){
-  length(which(abs(matrix.row[1:7]) >= lfc.thr))
-}
-
-# Function to find the time point where the LFC is greatest
-max.function <- function(matrix.row){
-  which.max(matrix.row[1:7])
-}
-
-# Function to find the earliest time point where LFC > 2
-first.function <- function(matrix.row){
-  min(which(abs(matrix.row[1:7]) >= lfc.thr))
-}
-
-# Function to make the LFC matrix from shrunken results objects
-LFCmatrixMaker <- function(geneList, results1, results2, results3, results4, results5, results6, results7){
   
-  # Make empty matrix
-  LFCmatrix = matrix(nrow=length(geneList), ncol=7)
-  
-  # Fill with LFC from 1 v 1 results
-  LFCmatrix[,1] = results1[,2][which(rownames(results1) %in% geneList)]
-  LFCmatrix[,2] = results2[,2][which(rownames(results2) %in% geneList)]
-  LFCmatrix[,3] = results3[,2][which(rownames(results3) %in% geneList)]
-  LFCmatrix[,4] = results4[,2][which(rownames(results4) %in% geneList)]
-  LFCmatrix[,5] = results5[,2][which(rownames(results5) %in% geneList)]
-  LFCmatrix[,6] = results6[,2][which(rownames(results6) %in% geneList)]
-  LFCmatrix[,7] = results7[,2][which(rownames(results7) %in% geneList)]
-  
-  # Apply functions for sorting
-  LFCmatrix = cbind(LFCmatrix, apply(LFCmatrix, 1, span.function))
-  LFCmatrix = cbind(LFCmatrix, apply(LFCmatrix, 1, max.function))
-  LFCmatrix = cbind(LFCmatrix, apply(LFCmatrix, 1, first.function))
-  LFCmatrix = cbind(LFCmatrix, results1$baseMean[which(rownames(results1) %in% geneList)])
-  
-  # Set rownames to geneID, colnames to sample (compared to 0) + sorting parameter
-  rownames(LFCmatrix) = geneList
-  colnames(LFCmatrix) = c("30", "60", "90", "120", "240", "360", "1440", "tp.span", "tp.max", "tp.first", "base.means")
-  
-  return(LFCmatrix)
-}
-
-# Function for reordering and plotting LFC matrix
-LFCplot <- function(LFC.matrix, cluster, order, truncate=5,geneNameIDList=NULL, k=7, maxval=NULL, main.title=NULL){
-  
-  # Convert name inputs for cluster/order into column numbers (based on build of LFC.matrix)
-  conversion = c("tp.span"=8, "tp.max"=9, "tp.first"=10, "base.means"=11)
-  
-  if(is.character(cluster)){
-    cluster = conversion[cluster]
-=======
->>>>>>> f0c78920e11fc967838d625cca94470ab375459d
-  }
-  else{
-    GOcol <- c(rep(c(color2, color1), each=n))
-  }
-  
-  # Set graph bounds
-  min.val = mround(min(GOval), 5, "floor")
-  max.val = mround(max(GOval), 5, "ceiling")
-  
-  bound = max(abs(min.val), abs(max.val))
-  
-  # Plot the top n enrichments
-  main.title = paste(title1, "vs", title2, "GO enrichments", sep=" ")
-  plot <- barplot(GOval, horiz=T, main=main.title, col=GOcol, xlim=c(-bound, bound), xlab="log(P-value)")
-  text(x=rep(c(2,-2),each=n),
-       y=plot, labels=wrap.labels(GOhit,30), cex=.8, font=2,
-       pos=rep(c(4,2),each=n))
-}
-
-
-
-#                      ##############                    #
-#----------------------# SUBSETTING #--------------------#
-#                      ##############                    #
-# Function for subsetting all genes according to p-value and LFC thresholds for 1 v 1 comparisons
-subsetter <- function(results1, results2, results3, results4, results5, results6, results7, p.val=p.thr, lfc=lfc.thr){
-  
-  # Subset significant genes according to LRT p-values
-  res1.sig = results1[which(results1[,5] < p.val),]
-  res2.sig = results2[which(results2[,5] < p.val),]
-  res3.sig = results3[which(results3[,5] < p.val),]
-  res4.sig = results4[which(results4[,5] < p.val),]
-  res5.sig = results5[which(results5[,5] < p.val),]
-  res6.sig = results6[which(results6[,5] < p.val),]
-  res7.sig = results7[which(results7[,5] < p.val),]
-  
-  # subset genes according to shrunken LFC
-  # Note: negative fold-changes indicate higher in second sample (i.e. 0 vs *___*)
-  res1.diff <- res1.sig[which(abs(res1.sig[,2]) >= lfc),]
-  res2.diff <- res2.sig[which(abs(res2.sig[,2]) >= lfc),]
-  res3.diff <- res3.sig[which(abs(res3.sig[,2]) >= lfc),]
-  res4.diff <- res4.sig[which(abs(res4.sig[,2]) >= lfc),]
-  res5.diff <- res5.sig[which(abs(res5.sig[,2]) >= lfc),]
-  res6.diff <- res6.sig[which(abs(res6.sig[,2]) >= lfc),]
-  res7.diff <- res7.sig[which(abs(res7.sig[,2]) >= lfc),]
-  
-<<<<<<< HEAD
-=======
-  # combine all genes into one, non-redundant list
-  geneList.sig.diff = c(rownames(res1.diff), rownames(res2.diff), rownames(res3.diff), rownames(res4.diff), rownames(res5.diff), rownames(res6.diff), rownames(res7.diff))
-  geneList.sig.diff = rownames(results1)[rownames(results1) %in% geneList.sig.diff]
- 
   return(geneList.sig.diff) 
 }
 
@@ -565,7 +448,6 @@ LFCplot <- function(LFC.matrix, cluster, order, truncate=5,geneNameIDList=NULL, 
     cluster = conversion[cluster]
   }
   
->>>>>>> f0c78920e11fc967838d625cca94470ab375459d
   if(is.character(order)){
     order = conversion[order]
   }
@@ -662,7 +544,7 @@ kHotmap <- function(kmatrix.norm, cut, cluster.order, k.colors=NULL, maxval=NULL
   # Order matrix and cluster assignment list in order of most --> least changed
   kmatrix.norm.order = kmatrix.norm[order(rowMax(kmatrix.norm), decreasing=T),]
   cut.order = cut[rownames(kmatrix.norm.order)]
-
+  
   # Separate clusters in matrix according to desired order
   kmatrix.norm.order = kmatrix.norm.order[order(match(cut.order, cluster.order)),]
   cut.order = cut[rownames(kmatrix.norm.order)]
@@ -703,7 +585,6 @@ kHotmap <- function(kmatrix.norm, cut, cluster.order, k.colors=NULL, maxval=NULL
   Sushi2::hotmap(kmatrix.norm.order[,1:7], col=map.ramp, labrow=F, labcol=T, gaps=gaps.k, selectylabs=geneIDs, selectylabs.label=geneNames, rowcolors=cluster.cols)
   Sushi::addlegend(c(-3,3), palette=colorRampPalette(colors=c(heatmap.min, heatmap.mid, heatmap.max)), title="Normalized Transcript Counts", bottominset=.5, xoffset=.11, title.offset = .07)
   mtext(side=3,line=1.0,font=2,text=title,cex=2)
-<<<<<<< HEAD
 }
 
 
@@ -739,7 +620,7 @@ higherIn <- function(results, sampleName1, sampleName2, pval.cutoff){
 
 # Function for extracting count info for given samples
 countExtract <- function(dds.obj, sampleName1, sampleName2, sample1, sample2){
-
+  
   count1.1 = assay(dds.obj)[,sample1]
   count1.2 = assay(dds.obj)[,(sample1+8)]
   
@@ -755,8 +636,6 @@ countExtract <- function(dds.obj, sampleName1, sampleName2, sample1, sample2){
   count.df = data.frame(name.count1.1 = count1.1, name.count1.2 = count1.2, name.count2.1=count2.1, name.count2.2=count2.2)
   
   return(count.df)
-=======
->>>>>>> f0c78920e11fc967838d625cca94470ab375459d
 }
 
 # Function for determining which genes are part of a set
@@ -785,7 +664,7 @@ ENSEMBL.HGNC.extract <- function(geneList){
   
   # make ensembl-hgnc db with BioMaRT
   nameDb = getBM(attributes=c('ensembl_gene_id', 'hgnc_symbol'), filters='ensembl_gene_id', values=ENSEMBL, mart=mart)
-
+  
   # remove duplicated rows
   if(length(which(duplicated(nameDb$ensembl_gene_id))) > 0){
     nameDb = nameDb[-which(duplicated(nameDb$ensembl_gene_id)),]
@@ -806,10 +685,6 @@ ENSEMBL.HGNC.extract <- function(geneList){
 
 
 
-
-#                        #######                        #
-#------------------------# CSV #------------------------#
-#                        #######                        #
 # Function for writing data to a csv
 geneWrite <- function(res, geneList, symbolList, count1_1, count1_2, count2_1, count2_2, sampleName1, sampleName2, filePath, pvalCutoff = .01)
 {
@@ -854,7 +729,6 @@ geneWrite <- function(res, geneList, symbolList, count1_1, count1_2, count2_1, c
 #                                                 R U N                                                     #
 #                                                                                                           #
 #############################################################################################################
-<<<<<<< HEAD
 
 #------------------------------------------------------------------------------------#
 #                                       Read in                                      #
@@ -864,17 +738,6 @@ geneWrite <- function(res, geneList, symbolList, count1_1, count1_2, count2_1, c
 #--------------------# READ IN DATA #--------------------#
 #                    ################                    #
 
-=======
-
-#------------------------------------------------------------------------------------#
-#                                       Read in                                      #
-#------------------------------------------------------------------------------------#
-
-#                    ################                    #
-#--------------------# READ IN DATA #--------------------#
-#                    ################                    #
-
->>>>>>> f0c78920e11fc967838d625cca94470ab375459d
 # Read in the txi file, as defined in the config file - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -> *** READRAW ***
 if(readRaw == T){
   # Read in config file
@@ -972,7 +835,7 @@ if(runShrink == T){
 
 # Make long + abridged gene list from dds 
 longGeneKey <- rownames(assay(dds))
-abridgedGeneKey <- nameAbridge(longKey)
+abridgedGeneKey <- nameAbridge(longGeneKey)
 
 
 # Read in excel of genes of interest (gene name and ENSG ID)
@@ -981,7 +844,7 @@ colnames(GoI) <- c("gene", "ID")
 
 # Add long ID based on dds
 for (n in 1:nrow(GoI))
-  {
+{
   GoI$long.ID[n] = nameExtend(GoI$ID[n])[[1]]
 }
 
@@ -1046,7 +909,7 @@ if(countPlot == T){
   # Go through genes of interest (GoI) and plot the counts of each gene listed (note: plotCounts output is the same as if you manually plotted the vst dds assay values)
   for(n in 1:nrow(GoI)){
     plotCounts(dds, GoI$long.ID[n], main=GoI$gene[n], pch=16, col=rep(sample.pal,times=2),
-              intgroup="condition")
+               intgroup="condition")
   }
   
   if(makePDF == T){
@@ -1074,13 +937,13 @@ if(MAplot == T){
   par(mfrow=c(2,4))
   
   # Plot each with shrunken LFC, LRT p-val
-  MAplotter(res.030, col1=sample.pal[1], col2=sample.pal[2],title1="0000", title2="0030", geneNameIDList = ap1)
-  MAplotter(res.060, col1=sample.pal[1], col2=sample.pal[3],title1="0000", title2="0060", geneNameIDList = ap1)
-  MAplotter(res.090, col1=sample.pal[1], col2=sample.pal[4],title1="0000", title2="0090", geneNameIDList = ap1)
-  MAplotter(res.0120, col1=sample.pal[1], col2=sample.pal[5],title1="0000", title2="0120", geneNameIDList = ap1)
-  MAplotter(res.0240, col1=sample.pal[1], col2=sample.pal[6],title1="0000", title2="0240", geneNameIDList = ap1)
-  MAplotter(res.0360, col1=sample.pal[1], col2=sample.pal[7],title1="0000", title2="0360", geneNameIDList = ap1)
-  MAplotter(res.01440, col1=sample.pal[1], col2=sample.pal[8],title1="0000", title2="1440", geneNameIDList = ap1)
+  MAplotter(res.030, col1=sample.pal[1], col2=sample.pal[2],title1="0000", title2="0030", geneNameIDList = GoI)
+  MAplotter(res.060, col1=sample.pal[1], col2=sample.pal[3],title1="0000", title2="0060", geneNameIDList = GoI)
+  MAplotter(res.090, col1=sample.pal[1], col2=sample.pal[4],title1="0000", title2="0090", geneNameIDList = GoI)
+  MAplotter(res.0120, col1=sample.pal[1], col2=sample.pal[5],title1="0000", title2="0120", geneNameIDList = GoI)
+  MAplotter(res.0240, col1=sample.pal[1], col2=sample.pal[6],title1="0000", title2="0240", geneNameIDList = GoI)
+  MAplotter(res.0360, col1=sample.pal[1], col2=sample.pal[7],title1="0000", title2="0360", geneNameIDList = GoI)
+  MAplotter(res.01440, col1=sample.pal[1], col2=sample.pal[8],title1="0000", title2="1440", geneNameIDList = GoI)
   
   if(makePDF == T){
     dev.off()
@@ -1146,7 +1009,6 @@ LFCmatrix.cat = LFCmatrixMaker(genes.sig.diff, res.030, res.060, res.090, res.01
 
 # Make another matrix without the sorting parameters
 LFCmatrix.k = LFCmatrix.cat[,1:7]
-<<<<<<< HEAD
 
 #---------#
 # K-MEANS #
@@ -1212,7 +1074,7 @@ if(LFCkclustPlot == T){
     # add axis
     axis(1, at=1:(LFC.k-1), labels=c(".5", "1", "1.5", "2", "4", "6", "24"))
   }
-
+  
   if(makePDF == T){
     dev.off()
   }
@@ -1272,7 +1134,7 @@ if(LFCorderPlot == T){
 #            ##################################           #
 
 # Build a matrix of subsetted genes with one row per gene, one column per comparison, and extra columns with sorting parameters
-countMatrix = dds.trans[which(rownames(vsd.LRT) %in% genes.sig.diff),]
+countMatrix = dds.trans[which(rownames(dds.trans) %in% genes.sig.diff),]
 countMatrix = assay(countMatrix)
 
 #---------#
@@ -1369,16 +1231,8 @@ if(countKclustHeatPlot == T){
     dev.off()
   }
 }
-=======
->>>>>>> f0c78920e11fc967838d625cca94470ab375459d
 
-#---------#
-# K-MEANS #
-#---------#
-# Center and scale data
-LFCmatrix.k.norm <- (LFCmatrix.k - rowMeans(LFCmatrix.k))/rowSds(LFCmatrix.k + .5)
 
-<<<<<<< HEAD
 #          #######################################         #
 #----------# TSV OVERVIEWS: LFC, COUNTS, CLUSTER #---------#
 #          #######################################         #
@@ -1407,11 +1261,11 @@ LFCmatrix.k.norm <- (LFCmatrix.k - rowMeans(LFCmatrix.k))/rowSds(LFCmatrix.k + .
 # base.mean
 # cluster(counts)
 
-# Find ENSG + HGNC pairs
-tsv.sub.ENSG.HGNC = ENSEMBL.HGNC.extract(countMatrix.combo)
 
 # Prep transformed count matrix (from countMatrix, selected for pval/LFC)
 tsv.countMatrix.combo = combineReps(countMatrix, new.colnames=c("0", "30", "60", "90", "120", "240", "360", "1440"))
+# Find ENSG + HGNC pairs
+tsv.sub.ENSG.HGNC = ENSEMBL.HGNC.extract(tsv.countMatrix.combo)
 tsv.countMatrix.combo = data.frame(tsv.countMatrix.combo, count.cut)
 tsv.countMatrix.combo = tsv.countMatrix.combo[which(nameAbridge(rownames(tsv.countMatrix.combo)) %in% tsv.sub.ENSG.HGNC$ENSEMBL),]
 
@@ -1432,220 +1286,4 @@ colnames(tsv.sub) = c("ENSEMBL", "HGNC", "GoI?", "0.norm.count", "30.norm.count"
 
 # Write to csv
 write_tsv(tsv.sub, path=file.path(outputDir, "LIMA_RNA_Subset-genes.tsv"))
-=======
-# Find optimal number of clusters - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - > *** LFCCLUSTEROPT ***
-if(LFCclusterOpt == T){
-  
-  if(makePDF == T){
-    pdf(file=file.path(outputDir, "LFCclusterOpt.pdf"), width=8, height=8)
-  }
-  
-  # Method 1: WSS
-  fviz_nbclust(LFCmatrix.k.norm, kmeans, method = "wss")
-  
-  # Method 2: Silhouette
-  fviz_nbclust(LFCmatrix.k.norm, kmeans, method = "silhouette")
-  
-  # Method 3: Nb clustering
-  nb <- NbClust(LFCmatrix.k.norm, distance = "euclidean", min.nc = 2,
-                max.nc = 10, method = "kmeans")
-  fviz_nbclust(nb)
-  
-  if(makePDF == T){
-    dev.off()
-  }
-  
-}
 
-# Set the number of clusters
-LFC.k <- 8
-
-# Set seed to preserve manual ordering
-set.seed(733)
-
-# Perform clustering
-LFC.cut = kclust(LFCmatrix.k.norm, k=LFC.k, type="k")
->>>>>>> f0c78920e11fc967838d625cca94470ab375459d
-
-# Plot the individual k clusters - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -> *** LFCKCLUSTPLOT ***
-if(LFCkclustPlot == T){
-  
-  if(makePDF == T){
-    pdf(file=file.path(outputDir, "LFCkclustersPlot.pdf"), width=12, height=6)
-  }
-  
-  # Plot each cluster
-  par(mar=c(3,2,1,2))
-  par(mfrow=c(2,LFC.k/2))
-  
-  for (i in 1:LFC.k) {
-    
-    # make empty plot
-    plot(colMeans(LFCmatrix.k.norm[LFC.cut==i,]), type="n",main=paste("n=",table(LFC.cut)[i],sep=""),ylim=c(-2,2), xaxt="n", xlab="Hours after LPS treatment", ylab="Relative LFC")
-    
-    # and transparent grey lines
-    apply(LFCmatrix.k.norm[LFC.cut==i,],1,lines,col=adjustcolor("grey",alpha.f=0.1))
-    
-    # add median line
-    lines(colMeans(LFCmatrix.k.norm[LFC.cut==i,]),col=k.colors[i],lwd=2)
-    
-    # add axis
-    axis(1, at=1:(LFC.k-1), labels=c(".5", "1", "1.5", "2", "4", "6", "24"))
-  }
-
-  if(makePDF == T){
-    dev.off()
-  }
-}
-
-# Plot heatmap of k clusters  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - > *** LFCKCLUSTHEATPLOT ***
-if(LFCkclustHeatPlot == T){
-  
-  if(makePDF == T){
-    pdf(file=file.path(outputDir, "LFCkclustersHeatPlot.pdf"), width=8, height=8)
-  }
-  
-  # Set the desired order of clusters, based on their timing (manual; changes with seed)
-  LFC.cluster.order <- c(8,1,2,4,3,6,5,7)
-  
-  # Plot heatmap
-  par(mfrow=c(1,1))
-  par(mar=c(5,4,4,5))
-  
-  kHotmap(LFCmatrix.k.norm, LFC.cut, LFC.cluster.order, maxval=3, geneNameIDList=GoI, title="LFC K-Means Clustering")
-  
-  if(makePDF == T){
-    dev.off()
-  }
-}
-
-
-
-#-------------#
-# BY CATEGORY #
-#-------------#
-# Plot LFC heatmaps clustered by one parameter and sorted by the other - - - - - - - - - - - - - - - - - - > *** LFCORDERPLOT ***
-if(LFCorderPlot == T){
-  if(makePDF == T){
-    pdf(file=file.path(outputDir, "LFCorderPlot.pdf"), width=12, height=8)
-  }
-  
-  par(mfrow=c(2,3))
-  par(mar=c(5,4,4,2))
-  maxval=5
-  LFCplot(LFCmatrix.cat, cluster="tp.span", order="tp.max", geneNameIDList = GoI, maxval=maxval)
-  LFCplot(LFCmatrix.cat, cluster="tp.span", order="tp.first", geneNameIDList = GoI, maxval=maxval)
-  LFCplot(LFCmatrix.cat, cluster="tp.max", order="tp.span", geneNameIDList = GoI, maxval=maxval)
-  LFCplot(LFCmatrix.cat, cluster="tp.max", order="tp.first", geneNameIDList = GoI, maxval=maxval)
-  LFCplot(LFCmatrix.cat, cluster="tp.first", order="tp.span", geneNameIDList = GoI, maxval=maxval)
-  LFCplot(LFCmatrix.cat, cluster="tp.first", order="tp.max", geneNameIDList = GoI, maxval=maxval)
-  
-  if(makePDF == T){
-    dev.off()
-  }
-}
-
-
-
-#            ##################################           #
-#------------# CLUSTERING: TRANSFORMED COUNTS #-----------#
-#            ##################################           #
-
-# Build a matrix of subsetted genes with one row per gene, one column per comparison, and extra columns with sorting parameters
-countMatrix = dds.trans[which(rownames(vsd.LRT) %in% genes.sig.diff),]
-countMatrix = assay(countMatrix)
-
-#---------#
-# K-MEANS #
-#---------#
-
-# Center and scale data
-countMatrix.norm <- (countMatrix - rowMeans(countMatrix))/rowSds(countMatrix + .5)
-
-# Find optimal number of clusters - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -> *** CLUSTEROPT ***
-if(countClusterOpt == T){
-  
-  if(makePDF == T){
-    pdf(file=file.path(outputDir, "countClusterOpt.pdf"), width=8, height=8)
-  }
-  
-  # Method 1: WSS
-  fviz_nbclust(countMatrix.norm, kmeans, method = "wss")
-  
-  # Method 2: Silhouette
-  fviz_nbclust(countMatrix.norm, kmeans, method = "silhouette")
-  
-  # Method 3: Nb clustering
-  nb <- NbClust(countMatrix.norm, distance = "euclidean", min.nc = 2,
-                max.nc = 10, method = "kmeans")
-  fviz_nbclust(nb)
-  
-  if(makePDF == T){
-    dev.off()
-  }
-  
-}
-
-# Set the number of clusters
-count.k <- 8
-
-# Set seed to preserve manual ordering
-set.seed(733)
-
-# Perform clustering
-count.cut = kclust(countMatrix.norm, k=count.k, type="k")
-
-# Combine replicates
-countMatrix.norm.combo <- combineReps(countMatrix.norm, new.colnames=c("0", "30", "60", "90", "120", "240", "360", "1440"))
-
-# Plot the individual k clusters - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -> *** COUNTKCLUSTPLOT ***
-if(countKclustPlot == T){
-  
-  if(makePDF == T){
-    pdf(file=file.path(outputDir, "countKclustersPlot.pdf"), width=12, height=6)
-  }
-  
-  # Plot each cluster
-  par(mar=c(3,2,1,2))
-  par(mfrow=c(2,count.k/2))
-  
-  for (i in 1:count.k) {
-    
-    # make empty plot
-    plot(colMeans(countMatrix.norm.combo[count.cut==i,]), type="n",main=paste("n=",table(count.cut)[i],sep=""),ylim=c(-2,2), xaxt="n", xlab="Hours after LPS treatment", ylab="Relative expression")
-    
-    # and transparent grey lines
-    apply(countMatrix.norm.combo[count.cut==i,],1,lines,col=adjustcolor("grey",alpha.f=0.1))
-    
-    # add median line
-    lines(colMeans(countMatrix.norm.combo[count.cut==i,]),col=k.colors[i],lwd=2)
-    
-    # add axis
-    axis(1, at=1:count.k, labels=c("0",".5", "1", "1.5", "2", "4", "6", "24"))
-  }
-  
-  if(makePDF == T){
-    dev.off()
-  }
-}
-
-# Plot heatmap of k clusters  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - > *** COUNTKCLUSTHEATPLOT ***
-if(countKclustHeatPlot == T){
-  
-  if(makePDF == T){
-    pdf(file=file.path(outputDir, "countKclustersHeatPlot.pdf"), width=8, height=8)
-  }
-  
-  # Set the desired order of clusters, based on their timing (manual; changes with seed)
-  count.cluster.order <- c(8,1,2,3,5,6,4,7)
-  
-  # Plot heatmap
-  par(mfrow=c(1,1))
-  par(mar=c(5,4,4,5))
-  
-  kHotmap(countMatrix.norm.combo, count.cut, count.cluster.order, maxval=3, geneNameIDList=GoI, title="Normalized Counts Clustering")
-  
-  if(makePDF == T){
-    dev.off()
-  }
-}
