@@ -51,20 +51,21 @@ runDESeq = F
 runShrink = F
 
 # Make which plots/files?
-txiPlot = F
+txiPlot = T
 PCAint = F
-PCAplot = F
+PCAplot = T
 countPlot = T
 MAplot = T
 GOplot = F
 LFCclusterOpt = F
-LFCkclustPlot = F
+LFCkclustPlot = T
 LFCkclustHeatPlot = T
 LFCorderPlot = T
 countClusterOpt = F
 countKclustPlot = T
 countKclustHeatPlot = T
-
+tsvFull = T
+tsvSub = T
 
 
 #                   ##################                   #
@@ -424,6 +425,9 @@ LFCmatrixMaker <- function(geneList, results1, results2, results3, results4, res
   LFCmatrix[,5] = results5[,2][which(rownames(results5) %in% geneList)]
   LFCmatrix[,6] = results6[,2][which(rownames(results6) %in% geneList)]
   LFCmatrix[,7] = results7[,2][which(rownames(results7) %in% geneList)]
+  
+  # Set NA's to 0's
+  LFCmatrix[is.na(LFCmatrix)]=0
   
   # Apply functions for sorting
   LFCmatrix = cbind(LFCmatrix, apply(LFCmatrix, 1, span.function))
@@ -1261,29 +1265,70 @@ if(countKclustHeatPlot == T){
 # base.mean
 # cluster(counts)
 
+# Make a TSV of significant/differential genes (incl. transformed counts, cluster, LFC, LFC order) - - - - - - - > *** TSVSUB ***
+if(tsvSub==T){
+  # Prep transformed count matrix (from countMatrix, selected for pval/LFC)
+  tsv.countMatrix.combo = combineReps(countMatrix, new.colnames=c("0", "30", "60", "90", "120", "240", "360", "1440"))
+  # Find ENSG + HGNC pairs
+  tsv.sub.ENSG.HGNC = ENSEMBL.HGNC.extract(tsv.countMatrix.combo)
+  # Combine counts and clusters, only for genes with ENSG-HGNC pairs
+  tsv.countMatrix.combo = data.frame(tsv.countMatrix.combo, count.cut)
+  tsv.countMatrix.combo = tsv.countMatrix.combo[which(nameAbridge(rownames(tsv.countMatrix.combo)) %in% tsv.sub.ENSG.HGNC$ENSEMBL),]
+  
+  # Prep LFC matrix
+  tsv.LFCmatrix = LFCmatrix.cat[which(nameAbridge(rownames(LFCmatrix.cat)) %in% tsv.sub.ENSG.HGNC$ENSEMBL),]
+  
+  # Identify GoI
+  tsv.sub.GOI = goiCheck(tsv.countMatrix.combo, GoI$ID)
+  
+  # Put all the data in one dataframe
+  tsv.sub <- data.frame(tsv.sub.ENSG.HGNC, tsv.sub.GOI, tsv.countMatrix.combo, tsv.LFCmatrix, 
+                        stringsAsFactors = FALSE)
+  rownames(tsv.sub) = c()
+  colnames(tsv.sub) = c("ENSEMBL", "HGNC", "GoI?", "0.norm.count", "30.norm.count", "60.norm.count", "90.norm.count",
+                        "120.norm.count", "240.norm.count", "360.norm.count", "1440.norm.count", "cluster", "30.LFC", 
+                        "60.LFC", "90.LFC", "120.LFC", "240.LFC", "360.LFC", "1440.LFC", "tp.span", "tp.max", "tp.first",
+                        "base.mean")
+  
+  # Write to tsv
+  write_tsv(tsv.sub, path=file.path(outputDir, "LIMA_RNA_Subset-genes.tsv"))
+}
 
-# Prep transformed count matrix (from countMatrix, selected for pval/LFC)
-tsv.countMatrix.combo = combineReps(countMatrix, new.colnames=c("0", "30", "60", "90", "120", "240", "360", "1440"))
-# Find ENSG + HGNC pairs
-tsv.sub.ENSG.HGNC = ENSEMBL.HGNC.extract(tsv.countMatrix.combo)
-tsv.countMatrix.combo = data.frame(tsv.countMatrix.combo, count.cut)
-tsv.countMatrix.combo = tsv.countMatrix.combo[which(nameAbridge(rownames(tsv.countMatrix.combo)) %in% tsv.sub.ENSG.HGNC$ENSEMBL),]
+# Make a TSV of all genes (incl. transformed counts, cluster, LFC, LFC order) - - - - - - - - - - - - - - - - - > *** TSVFULL ***
+if(tsvFull==T){ 
 
-# Prep LFC matrix
-tsv.LFCmatrix = LFCmatrix.cat[which(nameAbridge(rownames(LFCmatrix.cat)) %in% tsv.sub.ENSG.HGNC$ENSEMBL),]
-
-# Identify GoI
-tsv.sub.GOI = goiCheck(tsv.countMatrix.combo, GoI$ID)
-
-# Put all the data in one dataframe
-tsv.sub <- data.frame(tsv.sub.ENSG.HGNC, tsv.sub.GOI, tsv.countMatrix.combo, tsv.LFCmatrix, 
-                      stringsAsFactors = FALSE)
-rownames(tsv.sub) = c()
-colnames(tsv.sub) = c("ENSEMBL", "HGNC", "GoI?", "0.norm.count", "30.norm.count", "60.norm.count", "90.norm.count",
-                      "120.norm.count", "240.norm.count", "360.norm.count", "1440.norm.count", "cluster", "30.LFC", 
-                      "60.LFC", "90.LFC", "120.LFC", "240.LFC", "360.LFC", "1440.LFC", "tp.span", "tp.max", "tp.first",
-                      "base.mean")
-
-# Write to csv
-write_tsv(tsv.sub, path=file.path(outputDir, "LIMA_RNA_Subset-genes.tsv"))
-
+  # Prep transformed count matrix (from dds, no selection for pval/LFC)
+  tsv.full.combo = combineReps(assay(dds.trans), new.colnames=c("0", "30", "60", "90", "120", "240", "360", "1440"))
+  # Find ENSG + HGNC pairs
+  tsv.full.ENSG.HGNC = ENSEMBL.HGNC.extract(tsv.full.combo)
+  # Make full list of clusters (including cluster 0 for non-significant)
+  full.cut = rep(0, times=nrow(tsv.full.combo))
+  names(full.cut) = rownames(tsv.full.combo)
+  for(gene in names(full.cut)){
+    if(gene %in% names(count.cut)){
+      full.cut[gene] = count.cut[gene]
+    }
+  }
+  # Combine counts and clusters, only for genes with ENSG-HGNC pairs
+  tsv.full.combo = data.frame(tsv.full.combo, full.cut)
+  tsv.full.combo = tsv.full.combo[which(nameAbridge(rownames(tsv.full.combo)) %in% tsv.full.ENSG.HGNC$ENSEMBL),]
+  
+  # Prep LFC matrix
+  full.list = rownames(tsv.full.combo)
+  tsv.LFCmatrix.full = LFCmatrixMaker(full.list, res.030, res.060, res.090, res.0120, res.0240, res.0360, res.01440)
+  
+  # Identify GoI
+  tsv.full.GOI = goiCheck(tsv.full.combo, GoI$ID)
+  
+  # Put all the data in one dataframe
+  tsv.full <- data.frame(tsv.full.ENSG.HGNC, tsv.full.GOI, tsv.full.combo, tsv.LFCmatrix.full, 
+                        stringsAsFactors = FALSE)
+  rownames(tsv.full) = c()
+  colnames(tsv.full) = c("ENSEMBL", "HGNC", "GoI?", "0.norm.count", "30.norm.count", "60.norm.count", "90.norm.count",
+                        "120.norm.count", "240.norm.count", "360.norm.count", "1440.norm.count", "cluster", "30.LFC", 
+                        "60.LFC", "90.LFC", "120.LFC", "240.LFC", "360.LFC", "1440.LFC", "tp.span", "tp.max", "tp.first",
+                        "base.mean")
+  
+  # Write to tsv
+  write_tsv(tsv.full, path=file.path(outputDir, "LIMA_RNA.tsv"))
+}
