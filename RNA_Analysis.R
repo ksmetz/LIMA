@@ -56,7 +56,7 @@ PCAint = F
 PCAplot = T
 countPlot = T
 MAplot = T
-GOplot = F
+GOplot = T
 LFCclusterOpt = F
 LFCkclustPlot = T
 LFCkclustHeatPlot = T
@@ -172,7 +172,7 @@ nameExtend <- function(shortName, longKey = longGeneKey, abridgedKey = abridgedG
 }
 
 
-# Function for combining replicates in a 16x(many genes) matrix 
+# Function for combining replicates in a 16x(many genes) matrix; r1/r1/r1/r2/r2/r2 structure
 combineReps <- function(matrix, new.colnames)
 {
   newMatrix = c()
@@ -586,7 +586,7 @@ kHotmap <- function(kmatrix.norm, cut, cluster.order, k.colors=NULL, maxval=NULL
   }
   
   # Plot heatmap
-  Sushi2::hotmap(kmatrix.norm.order[,1:7], col=map.ramp, labrow=F, labcol=T, gaps=gaps.k, selectylabs=geneIDs, selectylabs.label=geneNames, rowcolors=cluster.cols)
+  Sushi2::hotmap(kmatrix.norm.order[,1:n], col=map.ramp, labrow=F, labcol=T, gaps=gaps.k, selectylabs=geneIDs, selectylabs.label=geneNames, rowcolors=cluster.cols)
   Sushi::addlegend(c(-3,3), palette=colorRampPalette(colors=c(heatmap.min, heatmap.mid, heatmap.max)), title="Normalized Transcript Counts", bottominset=.5, xoffset=.11, title.offset = .07)
   mtext(side=3,line=1.0,font=2,text=title,cex=2)
 }
@@ -622,25 +622,25 @@ higherIn <- function(results, sampleName1, sampleName2, pval.cutoff){
   return(indicator)
 }
 
-# Function for extracting count info for given samples
-countExtract <- function(dds.obj, sampleName1, sampleName2, sample1, sample2){
-  
-  count1.1 = assay(dds.obj)[,sample1]
-  count1.2 = assay(dds.obj)[,(sample1+8)]
-  
-  count2.1 = assay(dds.obj)[,sample2]
-  count2.2 = assay(dds.obj)[,(sample2+8)]
-  
-  name.count1.1 = paste("count", sampleName1, ".1")
-  name.count1.2 = paste("count", sampleName1, ".2")
-  
-  name.count2.1 = paste("count", sampleName2, ".1")
-  name.count2.2 = paste("count", sampleName2, ".2")
-  
-  count.df = data.frame(name.count1.1 = count1.1, name.count1.2 = count1.2, name.count2.1=count2.1, name.count2.2=count2.2)
-  
-  return(count.df)
-}
+# # Function for extracting count info for given samples
+# countExtract <- function(dds.obj, sampleName1, sampleName2, sample1, sample2){
+#   
+#   count1.1 = assay(dds.obj)[,sample1]
+#   count1.2 = assay(dds.obj)[,(sample1+8)]
+#   
+#   count2.1 = assay(dds.obj)[,sample2]
+#   count2.2 = assay(dds.obj)[,(sample2+8)]
+#   
+#   name.count1.1 = paste("count", sampleName1, ".1")
+#   name.count1.2 = paste("count", sampleName1, ".2")
+#   
+#   name.count2.1 = paste("count", sampleName2, ".1")
+#   name.count2.2 = paste("count", sampleName2, ".2")
+#   
+#   count.df = data.frame(name.count1.1 = count1.1, name.count1.2 = count1.2, name.count2.1=count2.1, name.count2.2=count2.2)
+#   
+#   return(count.df)
+# }
 
 # Function for determining which genes are part of a set
 goiCheck <- function(matrix, GoI){
@@ -687,44 +687,42 @@ ENSEMBL.HGNC.extract <- function(geneList){
   return(ENSEMBL.HGNC)
 }
 
-
-
-# Function for writing data to a csv
-geneWrite <- function(res, geneList, symbolList, count1_1, count1_2, count2_1, count2_2, sampleName1, sampleName2, filePath, pvalCutoff = .01)
-{
-  geneListLong = nameExtend(geneList)
-  
-  # Make list of the fold change (straight from res)
-  foldChange <- res$log2FoldChange[which(rownames(res) %in% geneListLong)]
-  
-  # Make list of the adjusted pvalues (straight from res as well)
-  pVal <- res$padj[which(rownames(res) %in% geneListLong)]
-  
-  # Make list based on p-values and foldChange that indicates which sample a gene is higher in, if any
-  higherIn <- rep("", times=length(geneListLong))
-  for (n in seq(1, length(geneListLong))){
-    if (is.na(pVal[n])){
-      higherIn[n] = "Neither"
-    } else{
-      if ((pVal[n] <= pvalCutoff) && (foldChange[n] > 0)){
-        higherIn[n] = sampleName2
-      }
-      if ((pVal[n] <= pvalCutoff) && (foldChange[n] < 0)){
-        higherIn[n] = sampleName1
-      }
-      if (pVal[n] > pvalCutoff){
-        higherIn[n] = "Neither"
-      }
-    }
-  }
-  
-  # Put it all in one data frame
-  data <- data.frame(geneList, symbolList, AP1ind, count1_1, count1_2, count2_1, count2_2, foldChange, higherIn, pVal, 
-                     stringsAsFactors = FALSE)
-  
-  # Write to csv
-  write.csv(data, file=filePath, row.names = F)
-}
+# # Function for writing data to a csv
+# geneWrite <- function(res, geneList, symbolList, count1_1, count1_2, count2_1, count2_2, sampleName1, sampleName2, filePath, pvalCutoff = .01)
+# {
+#   geneListLong = nameExtend(geneList)
+#   
+#   # Make list of the fold change (straight from res)
+#   foldChange <- res$log2FoldChange[which(rownames(res) %in% geneListLong)]
+#   
+#   # Make list of the adjusted pvalues (straight from res as well)
+#   pVal <- res$padj[which(rownames(res) %in% geneListLong)]
+#   
+#   # Make list based on p-values and foldChange that indicates which sample a gene is higher in, if any
+#   higherIn <- rep("", times=length(geneListLong))
+#   for (n in seq(1, length(geneListLong))){
+#     if (is.na(pVal[n])){
+#       higherIn[n] = "Neither"
+#     } else{
+#       if ((pVal[n] <= pvalCutoff) && (foldChange[n] > 0)){
+#         higherIn[n] = sampleName2
+#       }
+#       if ((pVal[n] <= pvalCutoff) && (foldChange[n] < 0)){
+#         higherIn[n] = sampleName1
+#       }
+#       if (pVal[n] > pvalCutoff){
+#         higherIn[n] = "Neither"
+#       }
+#     }
+#   }
+#   
+#   # Put it all in one data frame
+#   data <- data.frame(geneList, symbolList, AP1ind, count1_1, count1_2, count2_1, count2_2, foldChange, higherIn, pVal, 
+#                      stringsAsFactors = FALSE)
+#   
+#   # Write to csv
+#   write.csv(data, file=filePath, row.names = F)
+# }
 
 
 
@@ -1137,7 +1135,7 @@ if(LFCorderPlot == T){
 #------------# CLUSTERING: TRANSFORMED COUNTS #-----------#
 #            ##################################           #
 
-# Build a matrix of subsetted genes with one row per gene, one column per comparison, and extra columns with sorting parameters
+# Build a matrix of subsetted genes with one row per gene, one column per comparison
 countMatrix = dds.trans[which(rownames(dds.trans) %in% genes.sig.diff),]
 countMatrix = assay(countMatrix)
 
@@ -1309,6 +1307,7 @@ if(tsvFull==T){
       full.cut[gene] = count.cut[gene]
     }
   }
+  
   # Combine counts and clusters, only for genes with ENSG-HGNC pairs
   tsv.full.combo = data.frame(tsv.full.combo, full.cut)
   tsv.full.combo = tsv.full.combo[which(nameAbridge(rownames(tsv.full.combo)) %in% tsv.full.ENSG.HGNC$ENSEMBL),]
