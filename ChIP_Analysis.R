@@ -28,7 +28,7 @@ library(pals)
 #                    ################                    #
 
 # Make PDFs or run in Rstudio only?
-makePDF = T
+makePDF = F
 
 # Use directory specifically for today's figures?
 newDir = T
@@ -41,14 +41,14 @@ runDESeq = T
 runShrink = T
 
 # Make which plots/files?
-FRiPplot = T
-PCAplot = T
-MAplot = T
+FRiPplot = F
+PCAplot = F
+MAplot = F
 LFCclusterOpt = F
-KclustPlot = T
-KclustHeatPlot = T
-tsvSub = T
-tsvFull = T
+KclustPlot = F
+KclustHeatPlot = F
+tsvSub = F
+tsvFull = F
 
 
 
@@ -63,9 +63,9 @@ sample.pal=parula(8)
 k.colors <- brewer.dark2(8)
 
 # Assign colors for heatmaps
-heatmap.min = "red"
-heatmap.mid = "white"
-heatmap.max = "blue"
+heatmap.min = "steelblue1"
+heatmap.mid = "black"
+heatmap.max = "gold"
 
 
 #                  #####################                  #
@@ -330,7 +330,7 @@ kHotmap <- function(kmatrix.norm, cut, cluster.order, k.colors=NULL, maxval=NULL
 # Read in peak read counts, FRiP table and adjust for analysis - - - - - - - - - - - - - - - - - - - - - - - - - -> *** READRAW ***
 if(readRaw == T){
   # Read in the counts.tsv file containing the reads (values) at each peak (rows) for each sample (column)
-  countTable <- data.frame(read_tsv('/Users/phanstiel3/Desktop/LIMA_temp/counts.tsv', col_names=F))
+  countTable <- data.frame(read_tsv('/Users/phanstiel3/Research/Data/Projects/LIMA/chip/h3k27ac/proc/peaks/counts.tsv', col_names=F))
   
   # Set columns to shortened sample names, bed columns; set rows to combination of coordinates and subset to remove coordinates
   colnames(countTable) <- c("chr", "start", "end",
@@ -347,7 +347,7 @@ if(readRaw == T){
   countMatrix = countTable[,4:19]
   
   # Read in the FRiP table
-  FRiPtable <- data.frame(read_delim('/Users/phanstiel3/Desktop/FRiP.txt', delim=" ", col_names=F))
+  FRiPtable <- data.frame(read_delim('/Users/phanstiel3/Research/Data/Projects/LIMA/chip/h3k27ac/proc/frip/FRiP.txt', delim=" ", col_names=F))
   
   # Convert to a 2-column, where each row is sample (column 1 = reads in peaks, column 2 = total reads)
   FRiPmatrix = data.frame(matrix(FRiPtable$X2, ncol=2, byrow = T))
@@ -535,6 +535,9 @@ if(LFCclusterOpt == T){
 # Set the number of clusters
 count.k <- 8
 
+# Set seed to preserve manual ordering
+set.seed(733)
+
 # Perform clustering
 count.cut = kclust(subsetMatrix.norm, k=count.k, type="k")
 
@@ -684,3 +687,82 @@ if(tsvFull==T){
 
 
 
+
+
+# ######################################################################################################################
+# 
+# ## For committee meeting figure:
+# 
+# #pdf(file=file.path(outputDir, "countKclustersHeatPlotCommittee.pdf"), width=8, height=8)
+# png(filename=file.path(outputDir, "countKclustersHeatPlotCommittee.png"), width=8, height=8, units="in", res=300)
+# 
+# # Set the desired order of clusters, based on their timing (manual; changes with seed)
+# count.cluster.order <- c(7,6,8,3,4,1,2,5)
+# 
+# # Plot heatmap
+# par(mfrow=c(1,1))
+# par(mar=c(5,4,4,5))
+# 
+# kmatrix.norm = subsetMatrix.norm.combo
+# cut = count.cut
+# cluster.order = count.cluster.order
+# maxval = 3
+# geneNameIDList = NULL
+# title=""
+# k.colors=NULL
+# 
+# # Identify number of samples
+# n = ncol(kmatrix.norm)
+# 
+# # Identify number of clusters
+# k = max(cut)
+# 
+# # Order matrix and cluster assignment list in order of most --> least changed
+# kmatrix.norm.order = kmatrix.norm[order(rowMax(kmatrix.norm), decreasing=T),]
+# cut.order = cut[rownames(kmatrix.norm.order)]
+# 
+# # Separate clusters in matrix according to desired order
+# kmatrix.norm.order = kmatrix.norm.order[order(match(cut.order, cluster.order)),]
+# cut.order = cut[rownames(kmatrix.norm.order)]
+# 
+# # Truncate values
+# if(!is.null(maxval)){
+#   kmatrix.norm.order[which(kmatrix.norm.order>maxval)] = maxval
+#   kmatrix.norm.order[which(kmatrix.norm.order<(-maxval))] = (-maxval)
+# }
+# 
+# # Assign cluster colors, if selected
+# cluster.cols=c()
+# if(!is.null(k.colors)){
+#   cluster.cols = k.colors[cut.order]
+# }
+# 
+# # Combine LFC and cluster assignments into one matrix to find gaps
+# kmatrix.norm.order.gaps = cbind(kmatrix.norm.order, cut.order)
+# 
+# # Identify gaps between clusters
+# gaps.k = c()
+# for(i in 1:(k-1)){
+#   gaps.k = c(gaps.k, which(kmatrix.norm.order.gaps[,(n+1)] == cluster.order[i])[length(which(kmatrix.norm.order.gaps[,(n+1)] == cluster.order[i]))])
+# }
+# 
+# # Set heatmap colors
+# map.ramp = makeBreaks(maxval=maxval, num=100, min.col=heatmap.min, mid.col=heatmap.mid, max.col=heatmap.max)
+# 
+# # Circle genes of interest
+# geneNames=c()
+# geneIDs=c()
+# if(!is.null(geneNameIDList)){
+#   geneNames <- geneNameIDList[,1]
+#   geneIDs <- nameExtend(geneNameIDList[,2])
+# }
+# 
+# colnames(kmatrix.norm.order) = c("0", "0.5", "1", "1.5", "2", "4", "6", "24")
+# 
+# # Plot heatmap
+# Sushi2::hotmap(kmatrix.norm.order[,1:n], col=map.ramp, labrow=F, labcol=T, gaps=gaps.k, selectylabs=geneIDs, selectylabs.label=geneNames, selectylabs.col = c(rep("darkorange3", times=6), rep("royalblue3", times=3), "darkorange3"), rowcolors=cluster.cols)
+# Sushi::addlegend(c(-3,3), palette=colorRampPalette(colors=c(heatmap.min, heatmap.mid, heatmap.max)), title="Normalized Peak Read Counts", bottominset=.5, xoffset=.11, title.offset = .07)
+# mtext(side=3,line=1.0,font=2,text=title,cex=2)
+# 
+# dev.off()
+# 

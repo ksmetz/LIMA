@@ -38,34 +38,34 @@ library(readr)
 #                    ################                    #
 
 # Make PDFs or run in Rstudio only?
-makePDF = T
+makePDF = F
 
 # Use directory specifically for today's figures?
 newDir = T
 
 # Read in from raw data?
-readRaw = F
+readRaw = T
 
 # Recreate dds and results files?
-runDESeq = F
-runShrink = F
+runDESeq = T
+runShrink = T
 
 # Make which plots/files?
-txiPlot = T
+txiPlot = F
 PCAint = F
-PCAplot = T
-countPlot = T
-MAplot = T
-GOplot = T
+PCAplot = F
+countPlot = F
+MAplot = F
+GOplot = F
 LFCclusterOpt = F
-LFCkclustPlot = T
-LFCkclustHeatPlot = T
-LFCorderPlot = T
+LFCkclustPlot = F
+LFCkclustHeatPlot = F
+LFCorderPlot = F
 countClusterOpt = F
-countKclustPlot = T
-countKclustHeatPlot = T
-tsvFull = T
-tsvSub = T
+countKclustPlot = F
+countKclustHeatPlot = F
+tsvFull = F
+tsvSub = F
 
 
 #                   ##################                   #
@@ -84,9 +84,9 @@ MFcol <- "grey"
 k.colors <- brewer.dark2(8)
 
 # Assign colors for heatmaps
-heatmap.min = "red"
-heatmap.mid = "white"
-heatmap.max = "blue"
+heatmap.min = "steelblue1"
+heatmap.mid = "black"
+heatmap.max = "gold"
 
 
 
@@ -109,7 +109,7 @@ lfc.thr = 1
 outputDir = file.path("/Users/phanstiel3/Desktop")
 
 # Assign + make output directory for PDFs, CSVs, etc.
-if(newDir == T){
+if(newDir == T & makePDF == T){
   
   # Assign new output dir
   outputName = paste(proj, projNum, Sys.Date(), sep="_")
@@ -1217,11 +1217,11 @@ if(countKclustPlot == T){
 if(countKclustHeatPlot == T){
   
   if(makePDF == T){
-    pdf(file=file.path(outputDir, "countKclustersHeatPlot.pdf"), width=8, height=8)
+    pdf(file=file.path(outputDir, "countKclustersHeatPlotCommittee.pdf"), width=8, height=8)
   }
   
   # Set the desired order of clusters, based on their timing (manual; changes with seed)
-  count.cluster.order <- c(8,1,2,3,5,6,4,7)
+  count.cluster.order <- c(8,3,2,4,6,5,1,7)
   
   # Plot heatmap
   par(mfrow=c(1,1))
@@ -1331,3 +1331,172 @@ if(tsvFull==T){
   # Write to tsv
   write_tsv(tsv.full, path=file.path(outputDir, "LIMA_RNA.tsv"))
 }
+
+
+
+
+# #######################################################################################################################
+# 
+# ## For committee meeting figure:
+# 
+# #pdf(file=file.path(outputDir, "countKclustersHeatPlotCommittee.pdf"), width=8, height=8)
+# png(filename=file.path(outputDir, "countKclustersHeatPlotCommittee.png"), width=8, height=8, units="in", res=300)
+# 
+# # Set the desired order of clusters, based on their timing (manual; changes with seed)
+# count.cluster.order <- c(8,3,2,4,6,5,1,7)
+# 
+# # Plot heatmap
+# par(mfrow=c(1,1))
+# par(mar=c(5,4,4,5))
+# 
+# kmatrix.norm = countMatrix.norm.combo
+# cut = count.cut
+# cluster.order = count.cluster.order
+# maxval = 3
+# geneNameIDList = GoI
+# title=""
+# k.colors=NULL
+# 
+# # Identify number of samples
+# n = ncol(kmatrix.norm)
+# 
+# # Identify number of clusters
+# k = max(cut)
+# 
+# # Order matrix and cluster assignment list in order of most --> least changed
+# kmatrix.norm.order = kmatrix.norm[order(rowMax(kmatrix.norm), decreasing=T),]
+# cut.order = cut[rownames(kmatrix.norm.order)]
+# 
+# # Separate clusters in matrix according to desired order
+# kmatrix.norm.order = kmatrix.norm.order[order(match(cut.order, cluster.order)),]
+# cut.order = cut[rownames(kmatrix.norm.order)]
+# 
+# # Truncate values
+# if(!is.null(maxval)){
+#   kmatrix.norm.order[which(kmatrix.norm.order>maxval)] = maxval
+#   kmatrix.norm.order[which(kmatrix.norm.order<(-maxval))] = (-maxval)
+# }
+# 
+# # Assign cluster colors, if selected
+# cluster.cols=c()
+# if(!is.null(k.colors)){
+#   cluster.cols = k.colors[cut.order]
+# }
+# 
+# # Combine LFC and cluster assignments into one matrix to find gaps
+# kmatrix.norm.order.gaps = cbind(kmatrix.norm.order, cut.order)
+# 
+# # Identify gaps between clusters
+# gaps.k = c()
+# for(i in 1:(k-1)){
+#   gaps.k = c(gaps.k, which(kmatrix.norm.order.gaps[,(n+1)] == cluster.order[i])[length(which(kmatrix.norm.order.gaps[,(n+1)] == cluster.order[i]))])
+# }
+# 
+# # Set heatmap colors
+# map.ramp = makeBreaks(maxval=maxval, num=100, min.col=heatmap.min, mid.col=heatmap.mid, max.col=heatmap.max)
+# 
+# # Circle genes of interest
+# geneNames=c()
+# geneIDs=c()
+# if(!is.null(geneNameIDList)){
+#   geneNames <- geneNameIDList[,1]
+#   geneIDs <- nameExtend(geneNameIDList[,2])
+# }
+# 
+# colnames(kmatrix.norm.order) = c("0", "0.5", "1", "1.5", "2", "4", "6", "24")
+# 
+# # Plot heatmap
+# Sushi2::hotmap(kmatrix.norm.order[,1:n], col=map.ramp, labrow=F, labcol=T, gaps=gaps.k, selectylabs=geneIDs, selectylabs.label=geneNames, selectylabs.col = c(rep("darkorange3", times=6), rep("royalblue3", times=3), "darkorange3"), rowcolors=cluster.cols)
+# Sushi::addlegend(c(-3,3), palette=colorRampPalette(colors=c(heatmap.min, heatmap.mid, heatmap.max)), title="Normalized Transcript Counts", bottominset=.5, xoffset=.11, title.offset = .07)
+# mtext(side=3,line=1.0,font=2,text=title,cex=2)
+# 
+# dev.off()
+
+
+
+
+
+# #######################################################################################################################
+# 
+# # Playing with clusters:
+
+# Set time points, DoF
+time <- c(0,30,60,90,2*60,4*60,6*60, 24*60)
+time = 1:8
+dgr <- 3
+
+# # Re-design dds with lm + polynomial formula???
+# design <- model.matrix(~poly(time, degree=dgr))
+# dds.new = dds
+# dds.new$time = time
+# design(dds.new) <- ~poly(time, degree=4)
+# dds.new <- DESeq(dds.new, test="LRT", reduced=~1)
+# 
+# betas <- coef(dds.new)
+# fitted <- betas %*% t(design)
+
+identical(names(count.cut), rownames(countMatrix.norm.combo))
+
+# Cut the normalized + combined count Matrix into 8 clusters, find mean of each
+clusterExtract <- function(k){
+  clust.means = matrix(nrow=0, ncol=8)
+  for (i in 1:k){
+    clust = countMatrix.norm.combo[count.cut == i,]
+    clust.mean = colMeans(clust)
+    clust.means = rbind(clust.means, clust.mean)
+  }
+  colnames(clust.means) = time
+  return(clust.means)
+}
+
+means = clusterExtract(8)
+
+# Plot the cluster means, and the predicted poly curve based on only the means for each cluster
+clusterPlot <- function(k){
+  df = data.frame(time=1:8)
+  for (i in 1:k){
+    fit = lm(means[i,] ~ poly(time, degree=dgr))
+    curve = predict(fit, newdat=df)
+    plot(time, means[i,])
+    lines(df$time, curve, col="blue")
+  }
+}
+
+par(mfrow=c(2,4))
+clusterPlot(8)
+
+# Extract the betas + residuals for each curve, to compare with betas for other clusters from other data sets (???)
+clusterBetas <- function(k){
+  betas = matrix(nrow=0, ncol=(dgr+1))
+  for (i in 1:k){
+    fit = lm(means[i,] ~ poly(time, degree=dgr))
+    betas=rbind(betas, as.vector(coef(fit)))
+  }
+  colnames(betas) = names(coef(fit))
+  return(betas)
+}
+
+clusterResid <- function(k){
+  resid = matrix(nrow=0, ncol=8)
+  for (i in 1:k){
+    fit = lm(means[i,] ~ poly(time, degree=dgr))
+    resid=rbind(resid, as.vector(resid(fit)))
+  }
+  return(resid)
+}
+
+betas = clusterBetas(8)
+resid = clusterResid(8)
+
+
+
+
+
+
+
+
+
+
+
+
+
